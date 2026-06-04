@@ -24,13 +24,12 @@ public:
 
   //! Start or continute timer with name
   void start_timer(std::string name) {
-#ifdef caliper_FOUND
-    CALI_MARK_BEGIN(name.c_str());
-#else
     // start timer if new
     if (times.find(name) == times.end())
       times[name] = 0.0;
     start_times[name] = std::chrono::high_resolution_clock::now();
+#ifdef caliper_FOUND
+    CALI_MARK_BEGIN(name.c_str());
 #endif
   }
 
@@ -38,32 +37,25 @@ public:
   void stop_timer(std::string name) {
 #ifdef caliper_FOUND
     CALI_MARK_END(name.c_str());
-#else
+#endif
     double time_seconds =
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::high_resolution_clock::now() - start_times[name])
             .count() /
         1.0e6;
     times[name] += time_seconds;
-#endif
   }
 
   //! Print all timers that have been measured with this clsas
   void print_timers(void) const {
-#ifndef caliper_FOUND
     for (auto const &i_time : times) {
       std::cout << i_time.first << ": " << i_time.second << std::endl;
     }
-#endif
   }
 
   //! Get the current elapsed time for a timer
   double get_time(std::string name) {
-#ifndef caliper_FOUND
     return times[name];
-#else
-    return 0.0;
-#endif
   }
 
 private:
