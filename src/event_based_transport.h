@@ -171,6 +171,15 @@ inline void process_scatter_events(PhotonArray& photon_array,
     if (rng.generate_random_number() > (sigma_s[i] / total_sigma_s[i])) {
       photon_array.group[photon_index] =
         sample_emission_group(rng, emission_groups[local_idx]);
+      // chance of more intensive scatter
+      if (rng.generate_random_number() <= Constants::intensive_scatter_fraction) {
+        auto group = photon_array.group[photon_index];
+        // get a frequency (faux multigroup so just sample from wide spectrum)
+        double freq = Constants::lower_frequency_bound + static_cast<double>(group)/static_cast<double>(BRANSON_N_GROUPS)*Constants::delta_frequency_bounds;
+        auto angle = photon_array.angle[photon_index];
+        auto new_energy_angle = intensive_scatter(cells[local_idx].get_T_e(), freq, angle, rng);
+        photon_array.angle[photon_index] = new_energy_angle.second;
+      }
     }
   }
 }
@@ -527,78 +536,87 @@ inline void process_scatter_events(std::vector<Photon>& photon_array,
 
     if (rng.generate_random_number() > (sigma_s[i] / total_sigma_s[i])) {
       phtn.set_group(sample_emission_group(rng, emission_groups[local_idx]));
+      // chance of more intensive scatter
+      if (rng.generate_random_number() <= Constants::intensive_scatter_fraction) {
+        auto group = phtn.get_group();
+        // get a frequency (faux multigroup so just sample from wide spectrum)
+        double freq = Constants::lower_frequency_bound + static_cast<double>(group)/static_cast<double>(BRANSON_N_GROUPS)*Constants::delta_frequency_bounds;
+        auto angle = phtn.get_angle();
+        auto new_energy_angle = intensive_scatter(cells[local_idx].get_T_e(), freq, angle, rng);
+        phtn.set_angle(new_energy_angle.second);
+      }
     }
   }
 }
 
 // Process boundary events for AOS
 inline void process_boundary_events(std::vector<Photon>& photon_array,
-    const size_t* boundary_indices, // Original indices
-    const Cell* cells,
-    uint32_t rank_cell_offset,
-    size_t boundary_count,
-    std::vector<PhotonTrackingData>& tracking_data)
+const size_t* boundary_indices, // Original indices
+const Cell* cells,
+uint32_t rank_cell_offset,
+size_t boundary_count,
+std::vector<PhotonTrackingData>& tracking_data)
 {
 #pragma omp simd
-  for (size_t i = 0; i < boundary_count; ++i) {
-    size_t photon_index = boundary_indices[i];
-    auto& phtn = photon_array[photon_index];
-    uint32_t local_cell_index = phtn.get_cell() - rank_cell_offset;
-    Cell const* cell = &cells[local_cell_index];
-    uint32_t surface_cross = 0;
-    // Recalculate surface_cross
-    cell->get_distance_to_boundary(phtn.get_position(), phtn.get_angle(), surface_cross);
-    auto boundary_event = cell->get_bc(surface_cross);
-    if (boundary_event == Constants::ELEMENT) {
-      phtn.set_cell(cell->get_next_cell(surface_cross));
-      phtn.set_descriptor(Constants::BOUND); // Active
-    }
-    else if (boundary_event == Constants::PROCESSOR) {
-      phtn.set_cell(cell->get_next_cell(surface_cross));
-      phtn.set_descriptor(Constants::PASS); // Inactive
-    }
-    else if (boundary_event == Constants::VACUUM || boundary_event == Constants::SOURCE) {
-      phtn.set_descriptor(Constants::EXIT); // Inactive
-       if (boundary_event == Constants::VACUUM) {
-        tracking_data[photon_index].exited_vacuum = true;
-      }
-    }
-    else { // REFLECT
-      phtn.reflect(surface_cross);
-      phtn.set_descriptor(Constants::BOUND); // Active
-    }
+for (size_t i = 0; i < boundary_count; ++i) {
+size_t photon_index = boundary_indices[i];
+auto& phtn = photon_array[photon_index];
+uint32_t local_cell_index = phtn.get_cell() - rank_cell_offset;
+Cell const* cell = &cells[local_cell_index];
+uint32_t surface_cross = 0;
+// Recalculate surface_cross
+cell->get_distance_to_boundary(phtn.get_position(), phtn.get_angle(), surface_cross);
+auto boundary_event = cell->get_bc(surface_cross);
+if (boundary_event == Constants::ELEMENT) {
+  phtn.set_cell(cell->get_next_cell(surface_cross));
+  phtn.set_descriptor(Constants::BOUND); // Active
+}
+else if (boundary_event == Constants::PROCESSOR) {
+  phtn.set_cell(cell->get_next_cell(surface_cross));
+  phtn.set_descriptor(Constants::PASS); // Inactive
+}
+else if (boundary_event == Constants::VACUUM || boundary_event == Constants::SOURCE) {
+  phtn.set_descriptor(Constants::EXIT); // Inactive
+   if (boundary_event == Constants::VACUUM) {
+    tracking_data[photon_index].exited_vacuum = true;
   }
+}
+else { // REFLECT
+  phtn.reflect(surface_cross);
+  phtn.set_descriptor(Constants::BOUND); // Active
+}
+}
 }
 
 // Process census events for AOS
 inline void process_census_events(std::vector<Photon>& photon_array,
-    const size_t* census_indices, // Original indices
-    size_t census_count)
+const size_t* census_indices, // Original indices
+size_t census_count)
 {
 #pragma omp simd // Safe for simple assignment
-  for (size_t i = 0; i < census_count; ++i) {
-    photon_array[census_indices[i]].set_descriptor(Constants::CENSUS); // Inactive
-  }
+for (size_t i = 0; i < census_count; ++i) {
+photon_array[census_indices[i]].set_descriptor(Constants::CENSUS); // Inactive
+}
 }
 
 // Update photon state for AOS
 inline void update_photon_state(std::vector<Photon>& photon_array,
-    Cell_Tally* cell_tallies,
-    const std::vector<Event>& events, // Corresponds to active photons
-    const std::vector<double>& sigma_a, // Corresponds to active photons
-    const std::vector<double>& f, // Corresponds to active photons
-    const std::vector<uint32_t>& local_cell_indices, // Corresponds to active photons
-    size_t active_count,
-    std::vector<size_t>& scatter_indices, // Output list of original indices
-    std::vector<size_t>& boundary_indices,// Output list of original indices
-    std::vector<size_t>& census_indices,  // Output list of original indices
-    std::vector<size_t>& killed_indices,  // Output list of original indices
-    size_t& scatter_count, size_t& boundary_count, size_t& census_count, size_t& killed_count, // Output counts
-    std::vector<PhotonTrackingData>& tracking_data)
+Cell_Tally* cell_tallies,
+const std::vector<Event>& events, // Corresponds to active photons
+const std::vector<double>& sigma_a, // Corresponds to active photons
+const std::vector<double>& f, // Corresponds to active photons
+const std::vector<uint32_t>& local_cell_indices, // Corresponds to active photons
+size_t active_count,
+std::vector<size_t>& scatter_indices, // Output list of original indices
+std::vector<size_t>& boundary_indices,// Output list of original indices
+std::vector<size_t>& census_indices,  // Output list of original indices
+std::vector<size_t>& killed_indices,  // Output list of original indices
+size_t& scatter_count, size_t& boundary_count, size_t& census_count, size_t& killed_count, // Output counts
+std::vector<PhotonTrackingData>& tracking_data)
 {
-  // Reset counts
-  scatter_count = 0;
-  boundary_count = 0;
+// Reset counts
+scatter_count = 0;
+boundary_count = 0;
   census_count = 0;
   killed_count = 0;
 

@@ -17,6 +17,8 @@
 #include "RNG.h"
 #include "constants.h"
 #include "cell.h"
+#include "config.h"
+#include "scattering_functions.h"
 
 //! Set an input array to a random position within a cell
 GPU_HOST_DEVICE inline std::array<double, 3> get_uniform_position_in_cell(const Cell &cell, RNG &rng)  {
@@ -49,6 +51,95 @@ GPU_HOST_DEVICE inline std::array<double, 3>  get_uniform_position_on_face(const
     face_pos[2] = (face == 4) ? nodes[4] : nodes[5];
   }
   return face_pos;
+}
+
+// Do a scattering interaction that mimics arithmetic and branching found in other monte carlo
+// transport codes
+GPU_HOST_DEVICE inline std::pair<double, std::array<double, 3>> intensive_scatter(const double temperature, const double nu_in, const std::array<double,3> omega_in, RNG &rand) {
+  using Constants::pi;
+  using Constants::c;
+  using Constants::one_over_m_1;
+
+  // velocity used in scattering and sampling
+  std::array<double,3> velocity;
+
+  // initialize to invalid values
+  double nu_in_0 = -std::numeric_limits<double>::max();
+
+  // E set to initial invalid value
+  double E = -std::numeric_limits<double>::max();
+
+  double modifier_1 = -std::numeric_limits<double>::max();
+
+  // sample until electron is accepted
+  bool done = false;
+  do {
+    // sample speed
+    const double speed = scattering_functions::function_3(rand, temperature);
+
+    // sample which function to further sample.
+    double mu = -1.0 + 2.0 * sqrt(rand.generate_random_number());
+
+    scattering_functions::Check(mu > -1.0, __LINE__);
+    scattering_functions::Check(mu < 1.0, __LINE__);
+
+    // sample azimuthal angle
+    const double phi = 2 * pi * rand.generate_random_number();
+
+    // calculate interaction velocity
+    velocity = omega_in;
+    scattering_functions::function_5(mu, phi, velocity);
+    velocity[0] *= speed;
+    velocity[1] *= speed;
+    velocity[2] *= speed;
+
+    // modify velocity
+    std::pair<double, std::array<double,3>> const new_freq_and_angle = scattering_functions::function_4(nu_in, omega_in, velocity);
+    nu_in_0 = new_freq_and_angle.first;
+    scattering_functions::Check(nu_in_0 > 0.0, __LINE__);
+
+    // transform frequency to be unitless using
+    E = nu_in_0 * one_over_m_1;
+    scattering_functions::Check(E > 0.0, __LINE__);
+    const double TwoE = 2.0 * E;
+    const double Esquared = E * E;
+    modifier_1 = 1.0 + TwoE;
+
+    // use energy to select numerical method
+    if (E < 0.01) {
+      const double xs_ratio = std::fabs(0.8899 - TwoE + 4.9 * Esquared);
+
+      // test rejection criteria
+      if (rand.generate_random_number() < scattering_functions::accept_prob - 0.001*xs_ratio)
+        done = true;
+      scattering_functions::Check(xs_ratio >= 0.0, __LINE__);
+      scattering_functions::Check(xs_ratio <= 1.0, __LINE__);
+    }
+    // otherwise
+    else {
+      const double one_over_g2 = 1.0 / (modifier_1 * modifier_1);
+      scattering_functions::Check(modifier_1 > 0.0, __LINE__);
+      const double log_modifier_1 = std::log(modifier_1);
+      const double xs_ratio_numer = std::fabs(0.75 * (1.87 + (Esquared + E * Esquared) * one_over_g2 +
+                                            (Esquared - TwoE - 1.6) * log_modifier_1 / TwoE));
+
+      const double xs_ratio = xs_ratio_numer / Esquared;
+      done = (rand.generate_random_number() < (scattering_functions::accept_prob - 0.01*(1.0/xs_ratio)));
+      scattering_functions::Check(xs_ratio >= 0.0, __LINE__);
+      scattering_functions::Check(xs_ratio <= 1.0, __LINE__);
+    }
+  } while (!done);
+
+  // use the sampled velocity to slighty modify the photon angle
+  std::array<double,3> modifier {(velocity[0] < 1.0) ? velocity[0] : 1.0/velocity[0],
+                                 (velocity[1] < 1.0) ? velocity[1] : 1.0/velocity[1],
+                                 (velocity[2] < 1.0) ? velocity[2] : 1.0/velocity[2]};
+
+
+  std::array<double,3> omega_out{omega_in[0] * (0.99 - 0.01 * modifier[0]), omega_in[1] * (0.99 - 0.01 *modifier[1]),  omega_in[2] * (0.99 - 0.01 * modifier[2])};
+
+  scattering_functions::normalizer(omega_out);
+  return {nu_in_0*(0.99 - 0.1* (1.0/rand.generate_random_number())), omega_out};
 }
 
 

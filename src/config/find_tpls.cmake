@@ -473,36 +473,6 @@ The Draco build system doesn't know how to configure the build for
   message("CXX OPEN MP FLAGS: ${OpenMP_CXX_FLAGS}")
 
   ##############################################################################
-  # Caliper
-  ##############################################################################
-  if( NOT TARGET caliper )
-    #=============================================================================
-    # If the user has provided ``CALIPER_ROOT_DIR``, use it!  Choose items found
-    # at this location over system locations.
-    if( EXISTS "$ENV{CALIPER_ROOT_DIR}" )
-      file( TO_CMAKE_PATH "$ENV{CALIPER_ROOT_DIR}" CALIPER_ROOT_DIR )
-      set( CALIPER_ROOT_DIR "${CALIPER_ROOT_DIR}" CACHE PATH
-        "Prefix for Caliper installation." )
-    endif()
-
-    message( STATUS "Looking for caliper..." )
-    find_package( caliper QUIET)
-    if( caliper_FOUND )
-      message( STATUS "Looking for caliper.....found ${CALIPER_LIBRARY}" )
-    else()
-      message( STATUS "Looking for caliper.....not found" )
-    endif()
-
-    set_package_properties( caliper PROPERTIES
-      DESCRIPTION "CALIPER"
-      TYPE OPTIONAL
-      URL "https://software.llnl.gov/Caliper/"
-      PURPOSE "Code instrumentation for performance analysis"
-   )
-
-  endif()
-
-  ##############################################################################
   # metis
   # Load modules for metis to get correct environment variables
   ##############################################################################

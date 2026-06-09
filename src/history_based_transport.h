@@ -95,8 +95,18 @@ void transport_photon_history_aos_cpu(const uint32_t rank_cell_offset,
       // EVENT TYPE: SCATTER
       if (dist_to_event == dist_to_scatter) {
         phtn.set_angle(get_uniform_angle(rng));
-        if (rng.generate_random_number() > (sigma_s / total_sigma_s)) // Use total_sigma_s here
+        if (rng.generate_random_number() > (sigma_s / total_sigma_s)) {
           phtn.set_group(sample_emission_group(rng, *cell));
+          // chance of more intensive scatter
+          if (rng.generate_random_number() <= Constants::intensive_scatter_fraction) {
+            auto group = phtn.get_group();
+            // get a frequency (faux multigroup so just sample from wide spectrum)
+            double freq = Constants::lower_frequency_bound + static_cast<double>(group)/static_cast<double>(BRANSON_N_GROUPS)*Constants::delta_frequency_bounds;
+            auto angle = phtn.get_angle();
+            auto new_energy_angle = intensive_scatter(cell->get_T_e(), freq, angle, rng);
+            phtn.set_angle(new_energy_angle.second);
+          }
+        }
         phtn.set_descriptor(Constants::SCATTER);
       }
       // EVENT TYPE: BOUNDARY CROSS
@@ -212,9 +222,19 @@ void transport_photon_history_soa_cpu(const uint32_t rank_cell_offset,
       // EVENT TYPE: SCATTER
       if (dist_to_event == dist_to_scatter) {
         phtns.angle[i] = get_uniform_angle(rng);
-        if (rng.generate_random_number() > (sigma_s / total_sigma_s)) // Use total_sigma_s
+        if (rng.generate_random_number() > (sigma_s / total_sigma_s)) {
           phtns.group[i] = sample_emission_group(rng, *cell);
-        phtns.descriptors[i] = static_cast<unsigned char>(Constants::SCATTER);
+          // chance of more intensive scatter
+          if (rng.generate_random_number() <= Constants::intensive_scatter_fraction) {
+            auto group = phtns.group[i];
+            // get a frequency (faux multigroup so just sample from wide spectrum)
+            double freq = Constants::lower_frequency_bound + static_cast<double>(group)/static_cast<double>(BRANSON_N_GROUPS)*Constants::delta_frequency_bounds;
+            auto angle = phtns.angle[i];
+            auto new_energy_angle = intensive_scatter(cell->get_T_e(), freq, angle, rng);
+            phtns.angle[i] = new_energy_angle.second;
+          }
+        }
+        phtns.descriptors[i] = Constants::SCATTER;
       }
       // EVENT TYPE: BOUNDARY CROSS
       else if (dist_to_event == dist_to_boundary) {
@@ -330,8 +350,18 @@ void transport_photon_history_aos_gpu(const uint32_t rank_cell_offset,
       // EVENT TYPE: SCATTER
       if (dist_to_event == dist_to_scatter) {
         phtn.set_angle(get_uniform_angle(rng));
-        if (rng.generate_random_number() > (sigma_s / total_sigma_s)) // Use total_sigma_s
+        if (rng.generate_random_number() > (sigma_s / total_sigma_s)) {
           phtn.set_group(sample_emission_group(rng, *cell));
+          // chance of more intensive scatter
+          if (rng.generate_random_number() <= Constants::intensive_scatter_fraction) {
+            auto group = phtn.get_group();
+            // get a frequency (faux multigroup so just sample from wide spectrum)
+            double freq = Constants::lower_frequency_bound + static_cast<double>(group)/static_cast<double>(BRANSON_N_GROUPS)*Constants::delta_frequency_bounds;
+            auto angle = phtn.get_angle();
+            auto new_energy_angle = intensive_scatter(cell->get_T_e(), freq, angle, rng);
+            phtn.set_angle(new_energy_angle.second);
+          }
+        }
         phtn.set_descriptor(Constants::SCATTER);
       }
       // EVENT TYPE: BOUNDARY CROSS
@@ -475,10 +505,20 @@ void transport_photon_history_soa_gpu(const uint32_t rank_cell_offset,
     else {
       // EVENT TYPE: SCATTER
       if (dist_to_event == dist_to_scatter) {
-        angle_ptr[i] = get_uniform_angle(rng);
-        if (rng.generate_random_number() > (sigma_s / total_sigma_s)) // Use total_sigma_s
+        angle_ptr[i] =  get_uniform_angle(rng);
+        if (rng.generate_random_number() > (sigma_s / total_sigma_s)) {
           group_ptr[i] = sample_emission_group(rng, *cell);
-        descriptors_ptr[i] = static_cast<unsigned char>(Constants::SCATTER);
+          // chance of more intensive scatter
+          if (rng.generate_random_number() <= Constants::intensive_scatter_fraction) {
+            auto group = group_ptr[i];
+            // get a frequency (faux multigroup so just sample from wide spectrum)
+            double freq = Constants::lower_frequency_bound + static_cast<double>(group)/static_cast<double>(BRANSON_N_GROUPS)*Constants::delta_frequency_bounds;
+            auto angle = angle_ptr[i];
+            auto new_energy_angle = intensive_scatter(cell->get_T_e(), freq, angle, rng);
+            angle_ptr[i] = new_energy_angle.second;
+          }
+        }
+        descriptors_ptr[i] = Constants::SCATTER;
       }
       // EVENT TYPE: BOUNDARY CROSS
       else if (dist_to_event == dist_to_boundary) {

@@ -14,7 +14,10 @@
 
 namespace Constants {
 constexpr double pi(3.1415926535897932384626433832795); //!< Pi
+constexpr double sqrt_pi(1.7724538509055159); //!< Pi**0.5
+
 constexpr double c(299.792458); //!< speed of light in cm/shake
+constexpr double inv_c(1.0/c); //!< inverse speed of light in shake/cm
 constexpr double c_SO(1.0);     //!< speed of light for Su-Olson problem
 constexpr double h(6.62606957e-34 * 1.0e-9 /
                1.0e-8);      //!< Planck's constant in GJ/sh
@@ -22,6 +25,15 @@ constexpr double k(1.60219e-31); //!< energy conversion constant GJ/keV
 constexpr double a(0.01372);     //!< Boltzmann constant in GJ/cm^3/keV^4
 constexpr double a_SO(1.0);      //!< Boltzmann constant for SO problems
 constexpr double cutoff_fraction = 0.01; // note: get this from IMC_state in the future
+
+// parameters used in intensive scattering
+constexpr double m_1 = 495.0;       // keV
+constexpr double one_over_m_1 = 1.0 / m_1; // 1/keV
+constexpr double intensive_scatter_fraction = 0.1; // this fraction of scatters will add more work
+constexpr double lower_frequency_bound = 0.01; // keV
+constexpr double upper_frequency_bound = 100.0; // keV
+constexpr double delta_frequency_bounds=upper_frequency_bound - lower_frequency_bound; // keV
+
 
 enum bc_type { REFLECT, VACUUM, ELEMENT, SOURCE, PROCESSOR }; //!< Boundary conditions
 enum dir_type { X_NEG, X_POS, Y_NEG, Y_POS, Z_NEG, Z_POS }; //!< Directions
