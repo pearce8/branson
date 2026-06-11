@@ -174,6 +174,10 @@ void transport_photon_history_soa_cpu(const uint32_t rank_cell_offset,
   double thread_track_E{0.0};
 
   // transport this photon
+
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("History CPU SOA Photon Loop");
+  #endif
   while (active) {
     const double sigma_s = cell->get_op_s(phtns.group[i]);
     const double sigma_a = cell->get_op_a(phtns.group[i]);
@@ -274,6 +278,9 @@ void transport_photon_history_soa_cpu(const uint32_t rank_cell_offset,
       }
     } // end event loop
   } // end while alive
+  #ifdef caliper_FOUND
+    CALI_MARK_END("History CPU SOA Photon Loop");
+  #endif
 }
 
 
@@ -637,6 +644,10 @@ void history_cpu_transport_photons(const uint32_t rank_cell_offset,
   const auto n_cells = cell_tallies.size();
   const size_t n_photons = photons.size();
 
+#ifdef caliper_FOUND
+    CALI_MARK_BEGIN("History CPU Transport SOA");
+#endif
+
 #ifdef USE_OPENMP
   std::vector<std::vector<Cell_Tally>> thread_tallies(n_omp_threads);
 #pragma omp parallel num_threads(n_omp_threads)
@@ -663,6 +674,10 @@ void history_cpu_transport_photons(const uint32_t rank_cell_offset,
     // Call the CPU version
     transport_photon_history_soa_cpu(rank_cell_offset, i, photons, cpu_cells_ptr, cpu_tallies_ptr);
   }
+#endif
+
+#ifdef caliper_FOUND
+    CALI_MARK_END("History CPU Transport SOA");
 #endif
 }
 

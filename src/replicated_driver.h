@@ -47,12 +47,21 @@ void imc_replicated_driver(Mesh &mesh, IMC_State &imc_state,
 
   const uint32_t seed = imc_parameters.get_rng_seed();
   while (!imc_state.finished()) {
+
+    #ifdef caliper_FOUND
+      CALI_MARK_BEGIN("Time Step Loop");
+    #else
+      Timer time;
+      time.start_timer("time step loop");
+    #endif
+
     if (rank == 0)
       imc_state.print_timestep_header();
 
     mctr.reset_counters();
 
     // set opacity, Fleck factor, all energy to source
+    
     mesh.calculate_photon_energy(imc_state, n_user_photons);
 
     // all reduce to get total source energy to make correct number of articles on each rank
@@ -65,17 +74,25 @@ void imc_replicated_driver(Mesh &mesh, IMC_State &imc_state,
     GPU_Setup<Census_T> gpu_setup(rank, n_ranks, imc_parameters.get_use_gpu_transporter_flag(), mesh.get_cells(), n_user_photons);
 
     // setup source
-    Timer t_source;
-    t_source.start_timer("source");
+    #ifdef caliper_FOUND
+      CALI_MARK_BEGIN("Source Gen");
+    #else
+      time.start_timer("source gen");
+    #endif
 
     make_photons<Census_T>(imc_state.get_dt(), mesh, rank, imc_state.get_step(),  seed, n_user_photons, global_source_energy, gpu_setup);
     auto &all_photons = gpu_setup.get_census_photons();
     imc_state.set_pre_census_E(get_photon_list_census_E(all_photons));
 
     // make emission and source photons
-    t_source.stop_timer("source");
-    if (rank ==0)
-      std::cout<<"source time: "<<t_source.get_time("source")<<std::endl;
+    #ifdef caliper_FOUND
+      CALI_MARK_END("Source Gen");
+    #else
+      time.stop_timer("source gen");
+      if (rank ==0)
+        std::cout<<"source time: "<<time.get_time("source gen")<<std::endl;
+    #endif
+    
 
     imc_state.set_transported_particles(all_photons.size());
 
@@ -84,7 +101,19 @@ void imc_replicated_driver(Mesh &mesh, IMC_State &imc_state,
     // add barrier here to make sure the transport timer starts at roughly the same time
     MPI_Barrier(MPI_COMM_WORLD);
 
+    #ifdef caliper_FOUND
+      CALI_MARK_BEGIN("Transport Call");
+    #else
+      time.start_timer("transport call");
+    #endif
+
     replicated_transport<Census_T>(mesh, gpu_setup, imc_state, abs_E, track_E, all_photons, imc_parameters);
+
+    #ifdef caliper_FOUND
+      CALI_MARK_END("Transport Call");
+    #else
+      time.stop_timer("transport call");
+    #endif
 
     // reduce the abs_E and the track weighted energy (for T_r)
     MPI_Allreduce(MPI_IN_PLACE, &abs_E[0], mesh.get_n_global_cells(),
@@ -92,7 +121,19 @@ void imc_replicated_driver(Mesh &mesh, IMC_State &imc_state,
     MPI_Allreduce(MPI_IN_PLACE, &track_E[0], mesh.get_n_global_cells(),
                   MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
+    #ifdef caliper_FOUND
+      CALI_MARK_BEGIN("Material Update");
+    #else
+      time.start_timer("material update");
+    #endif
+
     mesh.update_temperature(abs_E, track_E, imc_state);
+
+    #ifdef caliper_FOUND
+      CALI_MARK_END("Material Update");
+    #else
+      time.stop_timer("material update");
+    #endif
 
     MPI_Barrier(MPI_COMM_WORLD);
     // for replicated, just let root do conservation
@@ -110,13 +151,33 @@ void imc_replicated_driver(Mesh &mesh, IMC_State &imc_state,
       // write SILO file
       double fake_mpi_runtime = 0.0;
       constexpr bool replicated_flag = true;
+
+      #ifdef caliper_FOUND
+        CALI_MARK_BEGIN("Write SILO");
+      #else
+        time.start_timer("write SILO");
+      #endif
+
       write_silo(mesh, imc_state.get_time(), imc_state.get_step(),
                  imc_state.get_rank_transport_runtime(), fake_mpi_runtime, rank,
                  n_ranks, replicated_flag);
+
+      #ifdef caliper_FOUND
+        CALI_MARK_END("Write SILO");
+      #else
+        time.stop_timer("write SILO");
+      #endif
     }
 
     // update time for next step
     imc_state.next_time_step();
+
+    #ifdef caliper_FOUND
+      CALI_MARK_END("Time Step Loop");
+    #else
+      timers.stop_timer("time step loop");
+    #endif
+    
   }
 }
 

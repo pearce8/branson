@@ -26,7 +26,7 @@ batch_transport(const double next_dt, const bool gpu_available, const GPU_Setup<
   double exit_E{0.0};
   std::string hardware = "GPU";      // default, change to CPU if used
   std::string algorithm = "history"; // default, change to event if used
-  t_transport.start_timer("batch transport");
+  //t_transport.start_timer("batch transport");
   if (transport_algorithm == Constants::HISTORY) {
     // HISTORY: GPU
     if (gpu_setup.use_gpu_transporter() && gpu_available) {
@@ -47,11 +47,25 @@ batch_transport(const double next_dt, const bool gpu_available, const GPU_Setup<
       history_cpu_transport_photons(rank_cell_offset, all_photons, mesh.get_cells(), cell_tallies,
                                     n_omp_threads);
     } // HISTORY: CPU
+
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("Post Process");
+  #else
+    t_transport.start_timer("post process");
+  #endif
+
     auto [batch_complete, batch_exit_E, batch_census_E] =
         post_process_photons(next_dt, all_photons, mesh, phtn_send_buffer);
     n_complete += batch_complete;
     exit_E += batch_exit_E;
     census_E += batch_census_E;
+
+  #ifdef caliper_FOUND
+    CALI_MARK_END("Post Process");
+  #else
+    t_transport.stop_timer("post process");
+  #endif
+
   } // HISTORY
   else if (transport_algorithm == Constants::EVENT) {
     algorithm = "event";
@@ -121,7 +135,7 @@ batch_transport(const double next_dt, const bool gpu_available, const GPU_Setup<
       }
     } // EVENT: CPU
   }   // EVENT
-  t_transport.stop_timer("batch transport");
+  //t_transport.stop_timer("batch transport");
   /*
   if constexpr (std::is_same_v<Census_T, std::vector<Photon>>) {
     std::cout << hardware << ", " << algorithm << ", AoS, transport--particles: " << n_complete
