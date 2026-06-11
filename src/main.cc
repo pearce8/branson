@@ -10,6 +10,7 @@
 //---------------------------------------------------------------------------//
 
 #include <iostream>
+#include <algorithm>
 #include <string>
 #include <sys/time.h>
 #include <time.h>
@@ -36,14 +37,96 @@ using std::endl;
 using std::string;
 using std::vector;
 
-int main(int argc, char **argv) {
-  MPI_Init(&argc, &argv);
+namespace {
 
-  // check to see if number of arguments is correct
-  if (argc != 2) {
-    cout << "Usage: BRANSON <path_to_input_file>" << endl;
+struct ParsedCommandLine {
+  ParsedCommandLine() : show_help(false) {}
+
+  bool show_help;
+  std::string input_file;
+  CommonInputOverrides common_overrides;
+};
+
+void print_usage() {
+  cout << "Usage: BRANSON <path_to_input_file> "
+       << "[--common-tag value | --common-tag=value] ..." << endl;
+  cout << "Common-section overrides use the XML tag name. Hyphens are converted"
+       << " to underscores, so --t-stop overrides <t_stop>." << endl;
+}
+
+std::string normalize_common_key(std::string key) {
+  const std::string common_prefix("common.");
+  if (key.compare(0, common_prefix.size(), common_prefix) == 0)
+    key = key.substr(common_prefix.size());
+  std::replace(key.begin(), key.end(), '-', '_');
+  return key;
+}
+
+ParsedCommandLine parse_command_line(int argc, char **argv) {
+  ParsedCommandLine parsed;
+
+  for (int i = 1; i < argc; ++i) {
+    const std::string arg(argv[i]);
+    if (arg == "-h" || arg == "--help") {
+      parsed.show_help = true;
+      return parsed;
+    }
+
+    if (arg.compare(0, 2, "--") == 0) {
+      std::string key_value = arg.substr(2);
+      std::string key;
+      std::string value;
+      const size_t equals_pos = key_value.find('=');
+      if (equals_pos != std::string::npos) {
+        key = key_value.substr(0, equals_pos);
+        value = key_value.substr(equals_pos + 1);
+      } else {
+        if (i + 1 >= argc) {
+          cout << "Missing value for command-line override: " << arg << endl;
+          print_usage();
+          exit(EXIT_FAILURE);
+        }
+        key = key_value;
+        value = argv[++i];
+      }
+
+      if (key.empty()) {
+        cout << "Invalid command-line override: " << arg << endl;
+        print_usage();
+        exit(EXIT_FAILURE);
+      }
+      parsed.common_overrides[normalize_common_key(key)] = value;
+      continue;
+    }
+
+    if (parsed.input_file.empty()) {
+      parsed.input_file = arg;
+      continue;
+    }
+
+    cout << "Unexpected positional argument: " << arg << endl;
+    print_usage();
     exit(EXIT_FAILURE);
   }
+
+  if (parsed.input_file.empty()) {
+    print_usage();
+    exit(EXIT_FAILURE);
+  }
+
+  return parsed;
+}
+
+} // end anonymous namespace
+
+int main(int argc, char **argv) {
+  ParsedCommandLine command_line = parse_command_line(argc, argv);
+  if (command_line.show_help) {
+    print_usage();
+    return EXIT_SUCCESS;
+  }
+
+  MPI_Init(&argc, &argv);
 
   // wrap main loop scope so objcts are destroyed before mpi_finalize is called
   {
@@ -73,8 +156,7 @@ int main(int argc, char **argv) {
     MPI_Types mpi_types;
 
     // get input object from filename
-    std::string filename(argv[1]);
-    Input input(filename, mpi_types);
+    Input input(command_line.input_file, mpi_types, command_line.common_overrides);
     if (mpi_info.get_rank() == 0)
       input.print_problem_info();
 

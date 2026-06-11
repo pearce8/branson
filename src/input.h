@@ -27,6 +27,8 @@
 #include "mpi_types.h"
 #include "region.h"
 
+using CommonInputOverrides = std::map<std::string, std::string>;
+
 //==============================================================================
 /*!
  * \class Input
@@ -40,7 +42,8 @@
 class Input {
 public:
   //! Constructor
-  Input(std::string fileName, const MPI_Types &mpi_types) {
+  Input(std::string fileName, const MPI_Types &mpi_types,
+        const CommonInputOverrides &common_overrides = CommonInputOverrides()) {
     using Constants::ELEMENT;
     using Constants::REFLECT;
     using Constants::VACUUM;
@@ -123,6 +126,15 @@ public:
       if (!region_node) {
         std::cout << "'regions' section not found!" << std::endl;
         exit(EXIT_FAILURE);
+      }
+
+      // Command-line values override the XML common block before parsing.
+      for (CommonInputOverrides::const_iterator it = common_overrides.begin();
+           it != common_overrides.end(); ++it) {
+        pugi::xml_node child = settings_node.child(it->first.c_str());
+        if (!child)
+          child = settings_node.append_child(it->first.c_str());
+        child.text().set(it->second.c_str());
       }
 
       tFinish = settings_node.child("t_stop").text().as_double();
