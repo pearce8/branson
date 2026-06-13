@@ -60,8 +60,12 @@ void particle_pass_transport(
   double next_dt = imc_state.get_next_dt(); //! Set for census photons
 
   // timing
+  // #ifdef caliper_FOUND
+  //   CALI_MARK_BEGIN("Timestep_transport");
+  // #else
   Timer t_transport;
   t_transport.start_timer("timestep_transport");
+  // #endif
 
   // Number of particles to run between MPI communication
   const uint32_t dd_batch_size = imc_parameters.get_dd_batch_size();
@@ -132,6 +136,14 @@ void particle_pass_transport(
   //------------------------------------------------------------------------//
   // on GPU, transport all photons from source
   //------------------------------------------------------------------------//
+  
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("Batch Transport");
+  #else
+    Timer transport;
+    transport.start_timer("Batch Transport");
+  #endif
+
   bool local_work_done = false;
   if(use_gpu) {
     auto [batch_complete, batch_exit_E, batch_census_E] = batch_transport(next_dt, gpu_available, gpu_setup, imc_parameters, rank_cell_offset, mesh, all_photons, send_list, cell_tallies, t_transport);
@@ -186,6 +198,12 @@ void particle_pass_transport(
         }
       }
     }
+    
+    #ifdef caliper_FOUND
+      CALI_MARK_END("Batch Transport");
+    #else
+      transport.stop_timer("Batch Transport");
+    #endif
 
     int recv_req_flag;
     int recv_count; // recieve count is 32 bit
@@ -249,6 +267,11 @@ void particle_pass_transport(
     } // end loop over adjacent processors
 
     if(!phtn_recv_list.empty()) {
+      #ifdef caliper_FOUND
+        CALI_MARK_BEGIN("Received Batch Transport");
+      #else
+        t.start_timer("Received Batch Transport");
+      #endif
       auto [batch_complete, batch_exit_E, batch_census_E] = batch_transport(next_dt, gpu_available, gpu_setup, imc_parameters, rank_cell_offset, mesh, phtn_recv_list, send_list, cell_tallies, t_transport);
       n_complete += batch_complete;
       exit_E += batch_exit_E;
@@ -257,6 +280,12 @@ void particle_pass_transport(
       // remove everything but photons marked census (off proc handled in batch transport above)
       remove_inactive_photons(phtn_recv_list);
       join_photon_arrays(commed_census_particles, phtn_recv_list);
+
+      #ifdef caliper_FOUND
+        CALI_MARK_END("Received Batch Transport");
+      #else
+        transport.stop_timer("Received Batch Transport");
+      #endif
     }
 
     phtn_recv_list.clear();
@@ -305,10 +334,21 @@ void particle_pass_transport(
   }
 
   // wait for receive requests
+
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("MPI Receives");
+  #else
+    transport.start_timer("MPI Receives");
+  #endif
   for (uint32_t i_b = 0; i_b < n_adjacent; ++i_b) {
     MPI_Wait(&phtn_recv_request[i_b], MPI_STATUS_IGNORE);
     mctr.n_receives_completed++;
   }
+  #ifdef caliper_FOUND
+    CALI_MARK_END("MPI Receives");
+  #else
+    transport.stop_timer("MPI Receives");
+  #endif
 
   MPI_Barrier(MPI_COMM_WORLD);
 
@@ -318,11 +358,22 @@ void particle_pass_transport(
   delete[] phtn_recv_request;
   delete[] phtn_send_request;
 
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("Tally Copies");
+  #else
+    transport.start_timer("Tally Copies");
+  #endif
   // copy cell tallies back out to rank_abs_E and rank_track_E
   for (size_t i = 0; i<cell_tallies.size();++i) {
     rank_abs_E[i] = cell_tallies[i].get_abs_E();
     rank_track_E[i] = cell_tallies[i].get_track_E();
   }
+
+  #ifdef caliper_FOUND
+    CALI_MARK_END("Tally Copies");
+  #else
+    transport.stop_timer("Tally Copies");
+  #endif
 
   // remove everything but photons marked census from the initial source (no commed particles)
   remove_inactive_photons(all_photons);

@@ -51,7 +51,7 @@ batch_transport(const double next_dt, const bool gpu_available, const GPU_Setup<
   #ifdef caliper_FOUND
     CALI_MARK_BEGIN("Post Process");
   #else
-    t_transport.start_timer("post process");
+    t_transport.start_timer("Post Process");
   #endif
 
     auto [batch_complete, batch_exit_E, batch_census_E] =
@@ -63,7 +63,7 @@ batch_transport(const double next_dt, const bool gpu_available, const GPU_Setup<
   #ifdef caliper_FOUND
     CALI_MARK_END("Post Process");
   #else
-    t_transport.stop_timer("post process");
+    t_transport.stop_timer("Post Process");
   #endif
 
   } // HISTORY

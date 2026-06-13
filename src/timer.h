@@ -67,3 +67,40 @@ private:
 };
 
 #endif // timer_h_
+
+// #pragma once
+
+// // Assuming Timer clk is defined or declared here
+// Timer clk; 
+
+// #ifdef caliper_FOUND
+
+//   // Version of macros if Caliper is found
+//   #define START(name) \
+//     do { \
+//       std::string nStr = name; \
+//       CALI_MARK_BEGIN(nStr.c_str()); \
+//     } while(0)
+
+//   #define END(name) \
+//     do { \
+//       std::string nStr = name; \
+//       CALI_MARK_END(nStr.c_str()); \
+//     } while(0)
+
+// #else
+
+//   // Fallback version of macros using your standard Timer class
+//   #define START(name) \
+//     do { \
+//       std::string nStr = name; \
+//       clk.start_timer(nStr); \
+//     } while(0)
+
+//   #define END(name) \
+//     do { \
+//       std::string nStr = name; \
+//       clk.stop_timer(nStr); \
+//     } while(0)
+
+// #endif

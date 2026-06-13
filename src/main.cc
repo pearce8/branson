@@ -228,9 +228,9 @@ int main(int argc, char **argv) {
     }
 
     #ifdef caliper_FOUND
-          CALI_MARK_BEGIN("Total");
+          CALI_MARK_END("Total");
     #else
-          timers.start_timer("Total");
+          timers.stop_timer("Total");
     #endif
 
 #ifdef caliper_FOUND

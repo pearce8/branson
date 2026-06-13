@@ -167,6 +167,13 @@ void replicated_transport(const Mesh& mesh, const GPU_Setup<Census_T>& gpu_setup
   census_E += batch_census_E;
   exit_E += batch_exit_E;
 
+  // record time of transport work for this rank
+ #ifdef caliper_FOUND
+    CALI_MARK_END("Batch Transport");
+  #else
+    t_transport.stop_timer("Batch Transport");
+  #endif
+
   // copy cell tallies back out to rank_abs_E and rank_track_E
   // This should happen regardless of CPU/GPU or algorithm, using the final cell_tallies state.
 
@@ -185,13 +192,6 @@ void replicated_transport(const Mesh& mesh, const GPU_Setup<Census_T>& gpu_setup
     CALI_MARK_END("Tally Copies");
   #else
     t_transport.stop_timer("tally copies");
-  #endif
-
-  // record time of transport work for this rank
- #ifdef caliper_FOUND
-    CALI_MARK_END("Batch Transport");
-  #else
-    t_transport.stop_timer("Batch Transport");
   #endif
 
   // wait for all ranks to finish

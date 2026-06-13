@@ -32,6 +32,9 @@ GPU_KERNEL void make_source_photons( Cell  const * const cells,  const double dt
 #else
   for (size_t i=0;i<n_photons;++i) {
 #endif
+    #ifdef caliper_FOUND
+      CALI_MARK_BEGIN("Photon Property Gen");
+    #endif
     auto source_type = photon_type[i];
     RNG rng(seed, photon_stream_numbers[i]);
     // census and emission get uniform position and isotropic angle, source gets position on face and
@@ -43,6 +46,10 @@ GPU_KERNEL void make_source_photons( Cell  const * const cells,  const double dt
     uint32_t group = std::floor(rng.generate_random_number() * double(BRANSON_N_GROUPS));
 
     all_photons[i] = Photon(cell.get_global_index(), group, source_type, Constants::event_type::BORN_SOURCE,  pos, angle, photon_E[i], distance_to_census, rng);
+    
+    #ifdef caliper_FOUND
+      CALI_MARK_END("Photon Property Gen");
+    #endif
   }
 #ifdef USE_GPU
   __syncthreads();
@@ -59,6 +66,10 @@ GPU_KERNEL void set_source_photons( Cell  const * const cells,  const double dt,
 #else
   for (size_t i=0;i<n_photons;++i) {
 #endif
+    #ifdef caliper_FOUND
+      CALI_MARK_BEGIN("Photon Property Gen");
+    #endif
+
     auto source_type = photon_type[i];
     rng[i] = RNG(seed, photon_stream_numbers[i]);
     // census and emission get uniform position and isotropic angle, source gets position on face and
@@ -70,6 +81,10 @@ GPU_KERNEL void set_source_photons( Cell  const * const cells,  const double dt,
     group[i] = std::floor(rng[i].generate_random_number() * double(BRANSON_N_GROUPS));
     // cell index comes in as local, is then set to global
     photon_cell_index[i] = cell.get_global_index();
+
+    #ifdef caliper_FOUND 
+      CALI_MARK_BEGIN("Photon Property Gen");
+    #endif
   }
 #ifdef USE_GPU
   __syncthreads();
@@ -80,6 +95,10 @@ GPU_KERNEL void set_source_photons( Cell  const * const cells,  const double dt,
 template <typename Census_T>
 void make_photons(const double dt, const Mesh &mesh, const int rank, const uint32_t cycle,
                     const uint32_t seed, const uint64_t n_user_photons, const double total_E, GPU_Setup<Census_T> &gpu_setup) {
+  
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("Make Photons");
+  #endif
 
   bool make_initial_census_flag{cycle==1};
   auto E_cell_census = mesh.get_census_E();
@@ -93,6 +112,10 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
   const uint64_t rank_stream_num_offset{n_user_photons * static_cast<uint64_t>(rank)};
 
   // figure out how many to make to size all_photons vector
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("Count Photons");
+  #endif
+
   uint64_t n_photons = 0;
   for (auto const &cell : mesh) {
     int i = mesh.get_local_index(cell.get_global_index());
@@ -124,6 +147,10 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
     }
   }
 
+  #ifdef caliper_FOUND
+    CALI_MARK_END("Count Photons");
+  #endif
+
   std::vector<uint64_t> photon_stream_nums(n_photons);
   std::vector<double> photon_E(n_photons);
   std::vector<int> photon_type(n_photons);
@@ -132,6 +159,11 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
 
   // in serial loop through and set the seed for each photon
   // use this to increment the seed for each photon
+  
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("Init Photons");
+  #endif
+  
   uint64_t ith_photon{0UL};
 
   for (auto const &cell : mesh) {
@@ -183,6 +215,10 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
       }
     }
   }
+
+  #ifdef caliper_FOUND
+    CALI_MARK_END("Init Photons");
+  #endif
 
   #ifdef USE_GPU
   // Copy input data to device
@@ -301,6 +337,10 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
     uint32_t *device_group_ptr = census_photons.group.data() + n_census_photons;
     #endif
 
+    #ifdef caliper_FOUND
+      CALI_MARK_BEGIN("Copy Populate SOA");
+    #endif
+
     #ifdef USE_GPU
     // Kernel settings
     int n_threads = Constants::n_threads_per_block;
@@ -361,6 +401,10 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
     std::copy(photon_E.begin(), photon_E.end(), census_photons.E0.begin() + n_census_photons);
     std::copy( photon_type.begin(), photon_type.end(), census_photons.source_type.begin() + n_census_photons);
     std::fill(census_photons.descriptors.begin() + n_census_photons, census_photons.descriptors.end(), Constants::event_type::BORN_SOURCE);
+    #endif
+
+  #ifdef caliper_FOUND
+    CALI_MARK_END("Copy Populate SOA");
   #endif
   }
 
@@ -376,6 +420,10 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
   Insist(!free_err, "error freeing device_source_face_ptr");
   free_err = cudaFree(device_cell_index_ptr);
   Insist(!free_err, "error freeing device_cell_index_ptr");
+  #endif
+
+  #ifdef caliper_FOUND
+    CALI_MARK_END("Make Photons");
   #endif
 }
 
