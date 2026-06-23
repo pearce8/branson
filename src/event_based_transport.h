@@ -334,10 +334,24 @@ void cpu_event_transport_photons(const uint32_t rank_cell_offset,
   int n_omp_threads, // n_omp_threads currently unused in this fine-grained version
   const std::vector<EmissionGroupData>& emission_groups)
 {
+
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("EVENT CPU Transport SOA");
+  #else
+    Timer t;
+    t.start_timer("EVENT CPU Transport SOA");
+  #endif
+
   const size_t maxPhotons = photon_array.size();
   if (maxPhotons == 0) return;
 
   // Tracking data is specific to this CPU implementation
+  
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("Copy to Tracking Data");
+  #else
+    t.start_timer("Copy to Tracking Data");
+  #endif
   std::vector<PhotonTrackingData> tracking_data(maxPhotons);
   for (size_t i = 0; i < maxPhotons; ++i) {
     tracking_data[i].initial_angle_x = photon_array.angle[i][0];
@@ -347,6 +361,11 @@ void cpu_event_transport_photons(const uint32_t rank_cell_offset,
     tracking_data[i].entered_domain = (photon_array.angle[i][0] > 0);
     tracking_data[i].exited_vacuum = false;
   }
+  #ifdef caliper_FOUND
+    CALI_MARK_END("Copy to Tracking Data");
+  #else
+    t.stop_timer("Copy to Tracking Data");
+  #endif
 
   // Allocate vectors for event processing
   std::vector<size_t> scatter_indices(maxPhotons),
@@ -465,6 +484,12 @@ void cpu_event_transport_photons(const uint32_t rank_cell_offset,
     active_count = active_photons_indices.size(); // Update active count
 
   } // End while(active_count > 0)
+
+  #ifdef caliper_FOUND
+    CALI_MARK_END("Event CPU Transport SOA");
+  #else
+    t.stop_timer("Event CPU Transport SOA");
+  #endif
 
   save_tracking_data(tracking_data, "photon_tracking_data_soa_cpu.csv");
 }
@@ -685,8 +710,21 @@ boundary_count = 0;
 // Main CPU event transport function for AOS
 void cpu_event_transport_photons(const uint32_t rank_cell_offset, std::vector<Photon>& photon_array, const std::vector<Cell>& cells, std::vector<Cell_Tally>& cell_tallies, int n_omp_threads, const std::vector<EmissionGroupData>& emission_groups) {
 
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("Event CPU Transport AOS");
+  #else
+    Timer t;
+    t.start_timer("Event CPU Transport AOS");
+  #endif
+
   const size_t maxPhotons = photon_array.size();
    if (maxPhotons == 0) return;
+
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("Copy to Tracking Data");
+  #else
+    t.start_timer("Copy to Tracking Data");
+  #endif
 
   // Tracking data specific to CPU implementation
   std::vector<PhotonTrackingData> tracking_data(maxPhotons);
@@ -698,6 +736,12 @@ void cpu_event_transport_photons(const uint32_t rank_cell_offset, std::vector<Ph
     tracking_data[i].entered_domain = (photon_array[i].get_angle()[0] > 0); // Example condition
     tracking_data[i].exited_vacuum = false;
   }
+
+  #ifdef caliper_FOUND
+    CALI_MARK_END("Copy to Tracking Data");
+  #else
+    t.stop_timer("Copy to Tracking Data");
+  #endif
 
   std::vector<size_t> scatter_indices(maxPhotons), boundary_indices(maxPhotons), census_indices(maxPhotons), killed_indices(maxPhotons), active_photons_indices(maxPhotons);
   std::vector<Event> events(maxPhotons);
@@ -775,6 +819,13 @@ void cpu_event_transport_photons(const uint32_t rank_cell_offset, std::vector<Ph
     active_photons_indices = std::move(next_active_photons_indices);
     active_count = active_photons_indices.size();
   }
+
+  #ifdef caliper_FOUND
+    CALI_MARK_END("Event CPU Transport AOS");
+  #else
+    t.stop_timer("Event CPU Transport AOS");
+  #endif
+
    save_tracking_data(tracking_data, "photon_tracking_data_aos_cpu.csv");
 }
 
@@ -1125,13 +1176,24 @@ void gpu_event_transport_photons(const uint32_t rank_cell_offset,
     std::vector<Cell_Tally> &cpu_cell_tallies,
     const std::vector<EmissionGroupData>& emission_groups) // Pass host emission data
 {
-  Timer t_transport;
-  t_transport.start_timer("soa_gpu_event_transport_photons");
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("EVENT GPU Transport SOA");
+  #else
+    Timer t;
+    t.start_timer("EVENT GPU Transport SOA");
+  #endif
+
   uint32_t n_photons = static_cast<uint32_t>(cpu_photons.size());
    if (n_photons == 0) return;
 
   size_t n_cells = cpu_cell_tallies.size();
   size_t n_emission_groups = emission_groups.size();
+
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("GPU MAllocs");
+  #else
+    t.start_timer("GPU MAllocs");
+  #endif
 
   cudaError_t err;
 
@@ -1221,6 +1283,11 @@ void gpu_event_transport_photons(const uint32_t rank_cell_offset,
   std::vector<unsigned int> h_zero_counters(NUM_EVENT_TYPES, 0);
   err = cudaMemcpy(d_event_counters, h_zero_counters.data(), sizeof(unsigned int) * NUM_EVENT_TYPES, cudaMemcpyHostToDevice); Insist(!err, "GPU SoA Memcpy H2D: d_event_counters");
 
+  #ifdef caliper_FOUND
+    CALI_MARK_END("GPU MAllocs");
+  #else
+    t.stop_timer("GPU MAllocs");
+  #endif
 
   // --- Event Loop ---
   uint32_t current_active_count = n_photons;
@@ -1230,7 +1297,7 @@ void gpu_event_transport_photons(const uint32_t rank_cell_offset,
 
   int n_threads = Constants::n_threads_per_block;
 
-  t_transport.start_timer("soa kernel");
+  //t_transport.start_timer("soa kernel");
   while (current_active_count > 0) {
     int n_blocks = (current_active_count + n_threads - 1) / n_threads;
 
@@ -1307,12 +1374,24 @@ void gpu_event_transport_photons(const uint32_t rank_cell_offset,
 
   } // End while(current_active_count > 0)
 
+  #ifdef caliper_FOUND
+    CALI_MARK_END("EVENT GPU Transport SOA");
+  #else
+    t.stop_timer("EVENT GPU Transport SOA");
+  #endif
+
 
   std::cout<<"finished while"<<std::endl;
   auto sync_err = cudaDeviceSynchronize();
-  t_transport.stop_timer("soa kernel");
+  //t_transport.stop_timer("soa kernel");
   Insist(!sync_err, "error in synchronize");
   std::cout<<"finished while post sync"<<std::endl;
+
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("GPU Copy to CPU");
+  #else
+    t.start_timer("GPU Copy to CPU");
+  #endif
 
   // --- Copy Results Back ---
   err = cudaMemcpy(cpu_photons.cell_ID.data(), d_cell_ID, n_photons * sizeof(uint32_t), cudaMemcpyDeviceToHost); Insist(!err, "SoA GPU copy back failed: cell_ID");
@@ -1326,6 +1405,12 @@ void gpu_event_transport_photons(const uint32_t rank_cell_offset,
   err = cudaMemcpy(cpu_photons.life_dx.data(), d_life_dx, n_photons * sizeof(double), cudaMemcpyDeviceToHost); Insist(!err, "SoA GPU copy back failed: life_dx");
   err = cudaMemcpy(cpu_photons.rng.data(), d_rng, n_photons * sizeof(RNG), cudaMemcpyDeviceToHost); Insist(!err, "SoA GPU copy back failed: rng");
   err = cudaMemcpy(cpu_cell_tallies.data(), d_cell_tallies, n_cells * sizeof(Cell_Tally), cudaMemcpyDeviceToHost); Insist(!err, "SoA GPU copy back failed: cell_tallies");
+
+  #ifdef caliper_FOUND
+    CALI_MARK_END("GPU Copy to CPU");
+  #else
+    t.stop_timer("GPU Copy to CPU");
+  #endif
 
   // --- Free GPU Memory ---
   auto free_err = cudaFree(d_cell_ID);
@@ -1385,7 +1470,7 @@ void gpu_event_transport_photons(const uint32_t rank_cell_offset,
   free_err = cudaFree(d_local_cell_indices);
   if (free_err) std::cout<<"Error freeing d_local_cell_indices"<<std::endl;
   std::cout<<"about to exit event transport loop"<<std::endl;
-  t_transport.stop_timer("soa_gpu_event_transport_photons");
+  //t_transport.stop_timer("soa_gpu_event_transport_photons");
 }
 
 
@@ -1635,8 +1720,13 @@ void gpu_event_transport_photons(const uint32_t rank_cell_offset,
     std::vector<Cell_Tally> &cpu_cell_tallies,
     const std::vector<EmissionGroupData>& emission_groups)
 {
-  Timer t_transport;
-  t_transport.start_timer("aos_gpu_event_transport_photons");
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("Event GPU Tranpsort AOS");
+  #else
+    Timer t;
+    t.start_timer("Event GPU Transport AOS");
+  #endif
+
   uint32_t n_photons = static_cast<uint32_t>(cpu_photons.size());
   if (n_photons == 0) return;
 
@@ -1646,6 +1736,12 @@ void gpu_event_transport_photons(const uint32_t rank_cell_offset,
       std::cerr << "Error: Mismatch between cell tally count and emission group count." << std::endl;
       return;
   }
+
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("GPU MAllocs");
+  #else
+    t.start_timer("GPU MAllocs");
+  #endif
 
   cudaError_t err;
 
@@ -1699,6 +1795,12 @@ void gpu_event_transport_photons(const uint32_t rank_cell_offset,
   err = cudaMalloc((void **)&d_census_indices, sizeof(uint32_t) * n_photons); Insist(!err, "GPU AoS Malloc: d_census_indices");
   err = cudaMalloc((void **)&d_killed_indices, sizeof(uint32_t) * n_photons); Insist(!err, "GPU AoS Malloc: d_killed_indices");
 
+  #ifdef caliper_FOUND
+    CALI_MARK_END("GPU MAllocs");
+  #else
+    t.stop_timer("GPU MAllocs");
+  #endif
+
   // --- Event Loop ---
   uint32_t current_active_count = n_photons;
   uint32_t* d_current_active_indices = d_active_indices_1;
@@ -1707,7 +1809,7 @@ void gpu_event_transport_photons(const uint32_t rank_cell_offset,
 
   int n_threads = Constants::n_threads_per_block;
 
-  t_transport.start_timer("aos kernel");
+  //t_transport.start_timer("aos kernel");
   while (current_active_count > 0) {
     int n_blocks = (current_active_count + n_threads - 1) / n_threads;
 
@@ -1793,7 +1895,7 @@ void gpu_event_transport_photons(const uint32_t rank_cell_offset,
   } // End while(current_active_count > 0)
 
   auto sync_error = cudaDeviceSynchronize(); // Ensure all kernels are finished before copy back
-  t_transport.stop_timer("aos kernel");
+  //t_transport.stop_timer("aos kernel");
   Insist(!sync_error, "Error in synchronize");
 
   // --- Copy Results Back ---
@@ -1831,7 +1933,13 @@ void gpu_event_transport_photons(const uint32_t rank_cell_offset,
   if (free_err) std::cout<<"Error freeing d_killed_indices"<<std::endl;
   free_err = cudaFree(d_next_active_count_atomic);
   if (free_err) std::cout<<"Error freeing d_next_active_count_atomic"<<std::endl;
-  t_transport.stop_timer("aos_gpu_event_transport_photons");
+  
+  #ifdef caliper_FOUND
+    CALI_MARK_END("Event GPU Tranpsort AOS");
+  #else
+    t.stop_timer("Event GPU Tranpsort AOS");
+  #endif
+
 }
 
 #endif // USE_GPU

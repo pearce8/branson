@@ -26,6 +26,7 @@
 
 GPU_KERNEL void make_source_photons( Cell  const * const cells,  const double dt, const uint32_t seed, uint64_t const * const photon_stream_numbers, double const * const photon_E, int const * const photon_type,  int const * const photon_source_face,  uint32_t const * const photon_cell_index, const uint64_t n_photons, Photon * const all_photons) {
   using Constants::c;
+
 #ifdef USE_GPU
   int32_t i = threadIdx.x + blockIdx.x * blockDim.x;
   if (i < n_photons) {
@@ -80,6 +81,10 @@ GPU_KERNEL void set_source_photons( Cell  const * const cells,  const double dt,
 template <typename Census_T>
 void make_photons(const double dt, const Mesh &mesh, const int rank, const uint32_t cycle,
                     const uint32_t seed, const uint64_t n_user_photons, const double total_E, GPU_Setup<Census_T> &gpu_setup) {
+  
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("Make Photons");
+  #endif
 
   bool make_initial_census_flag{cycle==1};
   auto E_cell_census = mesh.get_census_E();
@@ -93,6 +98,10 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
   const uint64_t rank_stream_num_offset{n_user_photons * static_cast<uint64_t>(rank)};
 
   // figure out how many to make to size all_photons vector
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("Count Photons");
+  #endif
+
   uint64_t n_photons = 0;
   for (auto const &cell : mesh) {
     int i = mesh.get_local_index(cell.get_global_index());
@@ -124,6 +133,10 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
     }
   }
 
+  #ifdef caliper_FOUND
+    CALI_MARK_END("Count Photons");
+  #endif
+
   std::vector<uint64_t> photon_stream_nums(n_photons);
   std::vector<double> photon_E(n_photons);
   std::vector<int> photon_type(n_photons);
@@ -132,6 +145,11 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
 
   // in serial loop through and set the seed for each photon
   // use this to increment the seed for each photon
+  
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("Init Photons");
+  #endif
+  
   uint64_t ith_photon{0UL};
 
   for (auto const &cell : mesh) {
@@ -184,8 +202,16 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
     }
   }
 
+  #ifdef caliper_FOUND
+    CALI_MARK_END("Init Photons");
+  #endif
+
   #ifdef USE_GPU
   // Copy input data to device
+
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("Copy to GPU");
+  #endif
   uint64_t *device_photon_stream_nums_ptr;
   auto alloc_err = cudaMalloc((void **)&device_photon_stream_nums_ptr, sizeof(uint64_t) * n_photons);
   Insist(!alloc_err, "CUDA/HIP error allocating photon seeds");
@@ -215,6 +241,11 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
   Insist(!alloc_err, "CUDA/HIP error allocating photon cell index");
   copy_err = cudaMemcpy(device_cell_index_ptr, photon_cell_index.data(), sizeof(uint32_t) * n_photons, cudaMemcpyHostToDevice);
   Insist(!copy_err, "CUDA/HIP error copying photon cell index to device");
+
+  #ifdef caliper_FOUND
+    CALI_MARK_END("Copy to GPU");
+  #endif
+
   #else
   // use device pointers with host side data to share code below
   uint64_t *device_photon_stream_nums_ptr = photon_stream_nums.data();
@@ -244,7 +275,14 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
     // Kernel settings
     int n_threads = Constants::n_threads_per_block;
     int n_blocks = (n_photons + n_threads - 1) / n_threads;
+
+    #ifdef caliper_FOUND
+      CALI_MARK_BEGIN("Photon Property Gen AOS");
+    #endif
     make_source_photons<<<n_blocks, n_threads>>>(gpu_setup.get_device_cells_ptr(), dt, seed, device_photon_stream_nums_ptr, device_photon_E_ptr, device_source_type_ptr, device_photon_source_face_ptr, device_cell_index_ptr, n_photons, device_photon_ptr);
+    #ifdef caliper_FOUND
+      CALI_MARK_END("Photon Property Gen AOS");
+    #endif
 
     auto kernel_err = cudaGetLastError();
     Insist(!kernel_err, "CUDA/HIP error in source kernel launch");
@@ -255,16 +293,29 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
     auto n_census_photons = census_photons.size();
     census_photons.resize(n_census_photons + n_photons);
 
+    #ifdef caliper_FOUND
+      CALI_MARK_BEGIN("GPU Copy to Host");
+    #endif
     // Copy photons back to host
     copy_err = cudaMemcpy(census_photons.data() + n_census_photons, device_photon_ptr, n_photons * sizeof(Photon), cudaMemcpyDeviceToHost);
     Insist(!copy_err, "CUDA/HIP error copying photons back to host");
-
+    #ifdef caliper_FOUND
+      CALI_MARK_END("GPU Copy to Host");
+    #endif
     // Free device memory specific to AoS
     auto free_err = cudaFree(device_photon_ptr);
     Insist(!free_err, "error freeing device_photon_ptr");
     #else
 
+    #ifdef caliper_FOUND
+      CALI_MARK_BEGIN("Photon Property Gen AOS");
+    #endif
+
     make_source_photons(mesh.get_const_cells_ptr(), dt, seed, device_photon_stream_nums_ptr, device_photon_E_ptr, device_source_type_ptr, device_photon_source_face_ptr, device_cell_index_ptr, n_photons, device_photon_ptr);
+    
+    #ifdef caliper_FOUND
+      CALI_MARK_END("Photon Property Gen AOS");
+    #endif
 
     #endif
   }
@@ -301,14 +352,25 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
     uint32_t *device_group_ptr = census_photons.group.data() + n_census_photons;
     #endif
 
+    
+
     #ifdef USE_GPU
     // Kernel settings
     int n_threads = Constants::n_threads_per_block;
     int n_blocks = (n_photons + n_threads - 1) / n_threads;
+
+    #ifdef caliper_FOUND
+      CALI_MARK_BEGIN("Photon Property Gen");
+    #endif
+
     set_source_photons<<<n_blocks, n_threads>>>(gpu_setup.get_device_cells_ptr(), dt, seed,
       device_photon_stream_nums_ptr, device_source_type_ptr, device_photon_source_face_ptr,
       n_photons, device_cell_index_ptr, device_rng_ptr, device_pos_ptr, device_angle_ptr,
       device_life_dx_ptr, device_group_ptr);
+
+    #ifdef caliper_FOUND
+      CALI_MARK_END("Photon Property Gen");
+    #endif
 
     auto kernel_err = cudaGetLastError();
     Insist(!kernel_err, "CUDA/HIP error in source kernel launch");
@@ -319,12 +381,23 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
     auto n_census_photons = census_photons.size();
     census_photons.resize(n_census_photons + n_photons);
 
+    #ifdef caliper_FOUND
+      CALI_MARK_BEGIN("Copy Populate SOA");
+    #endif
+
     // Copy photon arrays back to host photon array object
     // CPU -> CPU copies
     std::copy( photon_E.begin(), photon_E.end(),  census_photons.E.begin() + n_census_photons);
     std::copy(photon_E.begin(), photon_E.end(), census_photons.E0.begin() + n_census_photons);
     std::copy( photon_type.begin(), photon_type.end(), census_photons.source_type.begin() + n_census_photons);
     std::fill(census_photons.descriptors.begin() + n_census_photons, census_photons.descriptors.end(), Constants::event_type::BORN_SOURCE);
+    #ifdef caliper_FOUND
+      CALI_MARK_END("Copy Populate SOA");
+    #endif
+
+    #ifdef caliper_FOUND
+      CALI_MARK_BEGIN("Copy Populate SOA GPU to Host");
+    #endif
     // GPU -> CPU copies
     copy_err = cudaMemcpy(census_photons.cell_ID.data() + n_census_photons, device_cell_index_ptr, n_photons * sizeof(uint32_t), cudaMemcpyDeviceToHost);
     Insist(!copy_err, "CUDA/HIP error copying cell indices back to host");
@@ -339,6 +412,10 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
     copy_err = cudaMemcpy(census_photons.rng.data() + n_census_photons, device_rng_ptr, n_photons * sizeof(RNG), cudaMemcpyDeviceToHost);
     Insist(!copy_err, "CUDA/HIP error copying rng back to host");
 
+    #ifdef caliper_FOUND
+      CALI_MARK_END("Copy Populate SOA GPU to Host");
+    #endif
+
     // Free device memory specific to SoA
     auto free_err = cudaFree(device_group_ptr );
     Insist(!free_err, "error freeing device_group_ptr");
@@ -351,17 +428,35 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
     free_err = cudaFree(device_rng_ptr );
     Insist(!free_err, "error freeing device_rng_ptr");
   #else
+    #ifdef caliper_FOUND
+      CALI_MARK_BEGIN("Photon Property Gen");
+    #endif
     set_source_photons(mesh.get_const_cells_ptr(), dt, seed,
       device_photon_stream_nums_ptr, device_source_type_ptr, device_photon_source_face_ptr,
       n_photons, device_cell_index_ptr, device_rng_ptr, device_pos_ptr, device_angle_ptr,
       device_life_dx_ptr, device_group_ptr);
+
+    #ifdef caliper_FOUND
+      CALI_MARK_END("Photon Property Gen");
+    #endif
+
+    #ifdef caliper_FOUND
+      CALI_MARK_BEGIN("Copy Populate SOA");
+    #endif
 
     std::copy( photon_cell_index.begin() , photon_cell_index.end(), census_photons.cell_ID.begin() + n_census_photons);
     std::copy( photon_E.begin(), photon_E.end(),  census_photons.E.begin() + n_census_photons);
     std::copy(photon_E.begin(), photon_E.end(), census_photons.E0.begin() + n_census_photons);
     std::copy( photon_type.begin(), photon_type.end(), census_photons.source_type.begin() + n_census_photons);
     std::fill(census_photons.descriptors.begin() + n_census_photons, census_photons.descriptors.end(), Constants::event_type::BORN_SOURCE);
-  #endif
+    
+    #ifdef caliper_FOUND
+      CALI_MARK_END("Copy Populate SOA");
+    #endif
+    
+    #endif
+
+  
   }
 
   #ifdef USE_GPU
@@ -376,6 +471,10 @@ void make_photons(const double dt, const Mesh &mesh, const int rank, const uint3
   Insist(!free_err, "error freeing device_source_face_ptr");
   free_err = cudaFree(device_cell_index_ptr);
   Insist(!free_err, "error freeing device_cell_index_ptr");
+  #endif
+
+  #ifdef caliper_FOUND
+    CALI_MARK_END("Make Photons");
   #endif
 }
 

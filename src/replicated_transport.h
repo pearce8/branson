@@ -129,31 +129,58 @@ void replicated_transport(const Mesh& mesh, const GPU_Setup<Census_T>& gpu_setup
   }
 
   // timing
+  
+  //Timer t_transport;
+  //t_transport.start_timer("timestep transport");
+
   Timer t_transport;
-  t_transport.start_timer("timestep transport");
 
   //------------------------------------------------------------------------//
   // main transport loop
   //------------------------------------------------------------------------//
-
+  
   vector<Cell_Tally> cell_tallies(mesh.get_n_local_cells()); // Initialize tallies (zeroed)
+
   uint32_t rank_cell_offset{ 0 }; // no offset in replicated mesh
   std::vector<std::vector<Photon>> null_send_list(0); // not used in replicated mode
+
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("Batch Transport");
+  #else
+    t_transport.start_timer("batch transport");
+  #endif
 
   auto [batch_complete, batch_exit_E, batch_census_E] = batch_transport(next_dt, gpu_available, gpu_setup, imc_parameters, rank_cell_offset, mesh, all_photons, null_send_list, cell_tallies, t_transport);
   auto n_complete = batch_complete;
   census_E += batch_census_E;
   exit_E += batch_exit_E;
 
+  // record time of transport work for this rank
+ #ifdef caliper_FOUND
+    CALI_MARK_END("Batch Transport");
+  #else
+    t_transport.stop_timer("Batch Transport");
+  #endif
+
   // copy cell tallies back out to rank_abs_E and rank_track_E
   // This should happen regardless of CPU/GPU or algorithm, using the final cell_tallies state.
+
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("Tally Copies");
+  #else
+    t_transport.start_timer("tally copies");
+  #endif
+
   for (size_t i = 0; i < cell_tallies.size();++i) {
     rank_abs_E[i] = cell_tallies[i].get_abs_E();
     rank_track_E[i] = cell_tallies[i].get_track_E();
   }
 
-  // record time of transport work for this rank
-  t_transport.stop_timer("timestep transport");
+  #ifdef caliper_FOUND
+    CALI_MARK_END("Tally Copies");
+  #else
+    t_transport.stop_timer("tally copies");
+  #endif
 
   // wait for all ranks to finish
   MPI_Barrier(MPI_COMM_WORLD);
@@ -162,7 +189,7 @@ void replicated_transport(const Mesh& mesh, const GPU_Setup<Census_T>& gpu_setup
   imc_state.set_exit_E(exit_E);
   imc_state.set_post_census_E(census_E);
   imc_state.set_rank_transport_runtime(
-    t_transport.get_time("timestep transport"));
+    t_transport.get_time("transport"));
 
   // remove everything but photons marked census
   remove_inactive_photons(all_photons);

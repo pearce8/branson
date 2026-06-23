@@ -28,16 +28,16 @@ public:
     if (times.find(name) == times.end())
       times[name] = 0.0;
     start_times[name] = std::chrono::high_resolution_clock::now();
-#ifdef caliper_FOUND
-    CALI_MARK_BEGIN(name.c_str());
-#endif
+// #ifdef caliper_FOUND
+//     CALI_MARK_BEGIN(name.c_str());
+// #endif
   }
 
   //! Stop timer with name (must be the last active timer)
   void stop_timer(std::string name) {
-#ifdef caliper_FOUND
-    CALI_MARK_END(name.c_str());
-#endif
+// #ifdef caliper_FOUND
+//     CALI_MARK_END(name.c_str());
+// #endif
     double time_seconds =
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::high_resolution_clock::now() - start_times[name])
@@ -67,3 +67,40 @@ private:
 };
 
 #endif // timer_h_
+
+// #pragma once
+
+// // Assuming Timer clk is defined or declared here
+// Timer clk; 
+
+// #ifdef caliper_FOUND
+
+//   // Version of macros if Caliper is found
+//   #define START(name) \
+//     do { \
+//       std::string nStr = name; \
+//       CALI_MARK_BEGIN(nStr.c_str()); \
+//     } while(0)
+
+//   #define END(name) \
+//     do { \
+//       std::string nStr = name; \
+//       CALI_MARK_END(nStr.c_str()); \
+//     } while(0)
+
+// #else
+
+//   // Fallback version of macros using your standard Timer class
+//   #define START(name) \
+//     do { \
+//       std::string nStr = name; \
+//       clk.start_timer(nStr); \
+//     } while(0)
+
+//   #define END(name) \
+//     do { \
+//       std::string nStr = name; \
+//       clk.stop_timer(nStr); \
+//     } while(0)
+
+// #endif

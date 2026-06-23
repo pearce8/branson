@@ -10,3 +10,4 @@ GRTAGS
 build/
 test/
 report*
+build-linux*
