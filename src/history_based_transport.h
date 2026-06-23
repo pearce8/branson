@@ -25,6 +25,7 @@
 #include "photon.h"
 #include "photon_array.h"
 #include "sampling_functions.h"
+#include "timer.h"
 
 //----------------------------------------------------------------------------//
 // AoS Transport Function (CPU Host)
@@ -32,6 +33,13 @@
 //! Transport a photon (AoS) when the mesh is always available - CPU version
 void transport_photon_history_aos_cpu(const uint32_t rank_cell_offset,
     Photon &phtn, const Cell *cells, Cell_Tally *cell_tallies) {
+
+  #ifdef caliper_FOUND
+    CALI_MARK_BEGIN("Photon Loop Setup");
+  #else
+    Timer setup;
+    setup.start_timer("Photon Loop Setup");
+  #endif
 
   using Constants::bc_type;
   using Constants::c;
@@ -48,6 +56,12 @@ void transport_photon_history_aos_cpu(const uint32_t rank_cell_offset,
   // Use thread-local tallies for OpenMP efficiency, accumulate directly otherwise
   double thread_absorbed_E{0.0};
   double thread_track_E{0.0};
+
+  #ifdef caliper_FOUND
+    CALI_MARK_END("Photon Loop Setup");
+  #else
+    setup.stop_timer("Photon Loop Setup");
+  #endif
 
   // transport this photon
   while (active) {
@@ -160,6 +174,9 @@ void transport_photon_history_soa_cpu(const uint32_t rank_cell_offset,
 
   #ifdef caliper_FOUND
     CALI_MARK_BEGIN("Photon Loop Setup");
+  #else
+    Timer setup;
+    setup.start_timer("Photon Loop Setup");
   #endif
 
   using Constants::bc_type;
@@ -181,11 +198,10 @@ void transport_photon_history_soa_cpu(const uint32_t rank_cell_offset,
 
   #ifdef caliper_FOUND
     CALI_MARK_END("Photon Loop Setup");
+  #else
+      setup.stop_timer("Photon Loop Setup");
   #endif
 
-  #ifdef caliper_FOUND
-    CALI_MARK_BEGIN("History CPU SOA Photon Loop");
-  #endif
   while (active) {
     const double sigma_s = cell->get_op_s(phtns.group[i]);
     const double sigma_a = cell->get_op_a(phtns.group[i]);
@@ -286,9 +302,6 @@ void transport_photon_history_soa_cpu(const uint32_t rank_cell_offset,
       }
     } // end event loop
   } // end while alive
-  #ifdef caliper_FOUND
-    CALI_MARK_END("History CPU SOA Photon Loop");
-  #endif
 }
 
 
@@ -299,6 +312,13 @@ void transport_photon_history_soa_cpu(const uint32_t rank_cell_offset,
 GPU_DEVICE
 void transport_photon_history_aos_gpu(const uint32_t rank_cell_offset,
     Photon &phtn, const Cell *cells, Cell_Tally *cell_tallies) {
+
+  // #ifdef caliper_FOUND
+  //   CALI_MARK_BEGIN("Photon Loop Setup");
+  // #else
+  //   Timer setup;
+  //   setup.start_timer("Photon Loop Setup");
+  // #endif
 
   using Constants::bc_type;
   using Constants::c;
@@ -609,14 +629,15 @@ void transport_photon_history_soa_gpu(const uint32_t rank_cell_offset,
 
 //! Transport photons using history-based method on CPU (AoS version)
 void history_cpu_transport_photons(const uint32_t rank_cell_offset,
-    std::vector<Photon> &photons, const std::vector<Cell> &cells, std::vector<Cell_Tally> &cell_tallies, int n_omp_threads) {
+    std::vector<Photon> &photons, const std::vector<Cell> &cells, std::vector<Cell_Tally> &cell_tallies, int n_omp_threads, Timer &clk) {
 
   auto cpu_cells_ptr{cells.data()};
   auto cpu_tallies_ptr{cell_tallies.data()};
   const auto n_cells = cell_tallies.size();
 
 #ifdef caliper_FOUND
-    CALI_MARK_BEGIN("History CPU Transport AOS");
+  CALI_MARK_BEGIN("History CPU Transport AOS");
+  clk.start_timer("History CPU Transport AOS");
 #endif
 
 #ifdef USE_OPENMP
@@ -647,13 +668,14 @@ void history_cpu_transport_photons(const uint32_t rank_cell_offset,
 #endif
 
 #ifdef caliper_FOUND
-    CALI_MARK_END("History CPU Transport AOS");
+  CALI_MARK_END("History CPU Transport AOS");
+  clk.stop_timer("History CPU Transport AOS");
 #endif
 }
 
 //! Transport photons using history-based method on CPU (SoA version)
 void history_cpu_transport_photons(const uint32_t rank_cell_offset,
-    PhotonArray &photons, const std::vector<Cell> &cells, std::vector<Cell_Tally> &cell_tallies, int n_omp_threads) {
+    PhotonArray &photons, const std::vector<Cell> &cells, std::vector<Cell_Tally> &cell_tallies, int n_omp_threads, Timer &clk) {
 
   auto cpu_cells_ptr{cells.data()};
   auto cpu_tallies_ptr{cell_tallies.data()};
@@ -661,7 +683,9 @@ void history_cpu_transport_photons(const uint32_t rank_cell_offset,
   const size_t n_photons = photons.size();
 
 #ifdef caliper_FOUND
-    CALI_MARK_BEGIN("History CPU Transport SOA");
+  CALI_MARK_BEGIN("History CPU Transport SOA");
+  //Timer historyTransport;
+  clk.start_timer("transport");
 #endif
 
 #ifdef USE_OPENMP
@@ -694,7 +718,8 @@ void history_cpu_transport_photons(const uint32_t rank_cell_offset,
 #endif
 
 #ifdef caliper_FOUND
-    CALI_MARK_END("History CPU Transport SOA");
+  CALI_MARK_END("History CPU Transport SOA");
+  clk.stop_timer("transport");
 #endif
 }
 
@@ -746,7 +771,7 @@ void gpu_transport_photons(const uint32_t rank_cell_offset,
   Timer t_transport;
 
   #ifdef caliper_FOUND
-    CALI_MARK_BEGIN("GPU Transport Setup"):
+    CALI_MARK_BEGIN("GPU Transport Setup");
   #else
     t_transport.start_timer("GPU Transport Setup");
   #endif
@@ -783,9 +808,9 @@ void gpu_transport_photons(const uint32_t rank_cell_offset,
 
   // Launch kernel
   #ifdef caliper_FOUND
-    CALI_MARK_BEGIN("GPU Transport"):
+    CALI_MARK_BEGIN("History GPU Transport AOS");
   #else
-    t_transport.start_timer("GPU Transport");
+    t_transport.start_timer("History GPU Transport AOS");
   #endif 
 
   gpu_history_transport_aos_kernel<<<n_blocks, n_threads>>>(
@@ -798,13 +823,13 @@ void gpu_transport_photons(const uint32_t rank_cell_offset,
   Insist(!sync_err, "CUDA/HIP error synchronizing after history AoS kernel");
   
   #ifdef caliper_FOUND
-    CALI_MARK_END("GPU Transport"):
+    CALI_MARK_END("History GPU Transport AOS");
   #else
-    t_transport.stop_timer("GPU Transport");
+    t_transport.stop_timer("History GPU Transport AOS");
   #endif
 
   #ifdef caliper_FOUND
-    CALI_MARK_BEGIN("GPU Transport Copy to CPU"):
+    CALI_MARK_BEGIN("GPU Transport Copy to CPU");
   #else
     t_transport.start_timer("GPU Transport Copy to CPU");
   #endif
@@ -822,7 +847,13 @@ void gpu_transport_photons(const uint32_t rank_cell_offset,
   Insist(!free_err, "error freeing device_photons_ptr");
   free_err = cudaFree(device_cell_tallies_ptr);
   Insist(!free_err, "error freeing device_cell_tallies_ptr");
-  t_transport.stop_timer("aos_gpu_transport_photons");
+  //t_transport.stop_timer("aos_gpu_transport_photons");
+
+  #ifdef caliper_FOUND
+    CALI_MARK_END("GPU Transport Copy to CPU");
+  #else
+    t_transport.stop_timer("GPU Transport Copy to CPU");
+  #endif
 #else
   // Provide a fallback or error if GPU is not enabled but this function is called
   std::cerr << "Warning: GPU transport called but CUDA/HIP is not enabled. Running on CPU." << std::endl;
@@ -834,7 +865,7 @@ void gpu_transport_photons(const uint32_t rank_cell_offset,
 #endif
   // Need the host cells vector if running on CPU
   std::vector<Cell> host_cells; // Placeholder - needs actual data if fallback is used
-  history_cpu_transport_photons(rank_cell_offset, cpu_photons, host_cells, cpu_cell_tallies, n_omp_threads);
+  //history_cpu_transport_photons(rank_cell_offset, cpu_photons, host_cells, cpu_cell_tallies, n_omp_threads);
 #endif
 }
 
@@ -845,12 +876,6 @@ void gpu_transport_photons(const uint32_t rank_cell_offset,
 
 #ifdef USE_GPU
   Timer t_transport;
-  
-  #ifdef caliper_FOUND
-    CALI_MARK_BEGIN("GPU Transport Setup"):
-  #else
-    t_transport.start_timer("GPU Transport Setup");
-  #endif
 
   size_t n_photons = cpu_photons.size();
   if (n_photons == 0) return; // No work to do
@@ -924,17 +949,12 @@ void gpu_transport_photons(const uint32_t rank_cell_offset,
   int n_threads = Constants::n_threads_per_block;
   int n_blocks = (n_photons + n_threads - 1) / n_threads;
 
-  #ifdef caliper_FOUND
-    CALI_MARK_END("GPU Transport Setup");
-  #else
-    t_transport.stop_timer("GPU Transport Setup");
-  #endif
 
   // Launch kernel
   #ifdef caliper_FOUND
-    CALI_MARK_BEGIN("GPU Transport"):
+    CALI_MARK_BEGIN("History GPU Transport SOA");
   #else
-    t_transport.start_timer("GPU Transport");
+    t_transport.start_timer("History GPU Transport SOA");
   #endif
 
   gpu_history_transport_soa_kernel<<<n_blocks, n_threads>>>(
@@ -947,17 +967,17 @@ void gpu_transport_photons(const uint32_t rank_cell_offset,
   auto kernel_err = cudaGetLastError();
   Insist(!kernel_err, "CUDA/HIP error in history SoA kernel launch");
   auto sync_err = cudaDeviceSynchronize();
-  t_transport.stop_timer("soa kernel");
+  //t_transport.stop_timer("soa kernel");
   Insist(!sync_err, "CUDA/HIP error synchronizing after history SoA kernel");
 
   #ifdef caliper_FOUND
-    CALI_MARK_END("GPU Transport"):
+    CALI_MARK_END("History GPU Transport SOA");
   #else
-    t_transport.stop_timer("GPU Transport");
+    t_transport.stop_timer("History GPU Transport SOA");
   #endif
 
   #ifdef caliper_FOUND
-    CALI_MARK_BEGIN("GPU Transport Copy to CPU"):
+    CALI_MARK_BEGIN("GPU Transport Copy to CPU");
   #else
     t_transport.start_timer("GPU Transport Copy to CPU");
   #endif
@@ -1008,9 +1028,9 @@ void gpu_transport_photons(const uint32_t rank_cell_offset,
   t_transport.stop_timer("soa_gpu_transport_photons");
 
   #ifdef caliper_FOUND
-    CALI_MARK_BEGIN("GPU Transport Copy to CPU"):
+    CALI_MARK_END("GPU Transport Copy to CPU");
   #else
-    t_transport.start_timer("GPU Transport Copy to CPU");
+    t_transport.stop_timer("GPU Transport Copy to CPU");
   #endif
 
 #else
@@ -1024,7 +1044,7 @@ void gpu_transport_photons(const uint32_t rank_cell_offset,
 #endif
   // Need the host cells vector if running on CPU
   std::vector<Cell> host_cells; // Placeholder - needs actual data if fallback is used
-  history_cpu_transport_photons(rank_cell_offset, cpu_photons, host_cells, cpu_cell_tallies, n_omp_threads);
+  //history_cpu_transport_photons(rank_cell_offset, cpu_photons, host_cells, cpu_cell_tallies, n_omp_threads);
 #endif
 }
 

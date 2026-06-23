@@ -163,7 +163,7 @@ int main(int argc, char **argv) {
       else if(input.get_particle_storage() == SOA) {
 
         #ifdef caliper_FOUND
-          CALI_MARK_BEGIN("Particle Pass Driver SOA");
+          CALI_MARK_BEGIN("Driver");
         #else
           timers.start_timer("particle pass driver soa");
         #endif
@@ -171,7 +171,7 @@ int main(int argc, char **argv) {
         imc_particle_pass_driver<PhotonArray>(mesh, imc_state, imc_p, mpi_types, mpi_info);
         
         #ifdef caliper_FOUND
-          CALI_MARK_END("Particle Pass Driver SOA");
+          CALI_MARK_END("Driver");
         #else
           timers.stop_timer("particle pass driver soa");
         #endif      
@@ -183,7 +183,7 @@ int main(int argc, char **argv) {
     }
     else if (input.get_dd_mode() == REPLICATED) {
       if(input.get_particle_storage() == AOS) {
-        timers.start_timer("replicated aos");
+        //timers.start_timer("replicated aos");
 
         #ifdef caliper_FOUND
           CALI_MARK_BEGIN("Replicated Driver AOS");
@@ -203,7 +203,7 @@ int main(int argc, char **argv) {
       else if( input.get_particle_storage() == SOA) {
         
         #ifdef caliper_FOUND
-          CALI_MARK_BEGIN("Replicated Driver SOA");
+          CALI_MARK_BEGIN("Driver");
         #else
           timers.start_timer("replicated driver soa");
         #endif
@@ -211,7 +211,7 @@ int main(int argc, char **argv) {
         imc_replicated_driver<PhotonArray>(mesh, imc_state, imc_p, mpi_types, mpi_info);
         
         #ifdef caliper_FOUND
-          CALI_MARK_END("Replicated Driver SOA");
+          CALI_MARK_END("Driver");
         #else
           timers.stop_timer("replicated driver soa");
         #endif

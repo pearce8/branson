@@ -138,20 +138,8 @@ void replicated_transport(const Mesh& mesh, const GPU_Setup<Census_T>& gpu_setup
   //------------------------------------------------------------------------//
   // main transport loop
   //------------------------------------------------------------------------//
-  #ifdef caliper_FOUND
-    CALI_MARK_BEGIN("Tally Construction");
-  #else
-    
-    t_transport.start_timer("tally construction");
-  #endif
   
   vector<Cell_Tally> cell_tallies(mesh.get_n_local_cells()); // Initialize tallies (zeroed)
-  
-  #ifdef caliper_FOUND
-    CALI_MARK_END("Tally Construction");
-  #else
-    t_transport.stop_timer("tally construction");
-  #endif
 
   uint32_t rank_cell_offset{ 0 }; // no offset in replicated mesh
   std::vector<std::vector<Photon>> null_send_list(0); // not used in replicated mode
@@ -201,7 +189,7 @@ void replicated_transport(const Mesh& mesh, const GPU_Setup<Census_T>& gpu_setup
   imc_state.set_exit_E(exit_E);
   imc_state.set_post_census_E(census_E);
   imc_state.set_rank_transport_runtime(
-    t_transport.get_time("timestep transport"));
+    t_transport.get_time("transport"));
 
   // remove everything but photons marked census
   remove_inactive_photons(all_photons);

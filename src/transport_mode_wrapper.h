@@ -45,7 +45,7 @@ batch_transport(const double next_dt, const bool gpu_available, const GPU_Setup<
       hardware = "CPU";
       // Call correct overloaded history_cpu_transport_photons
       history_cpu_transport_photons(rank_cell_offset, all_photons, mesh.get_cells(), cell_tallies,
-                                    n_omp_threads);
+                                    n_omp_threads, t_transport);
     } // HISTORY: CPU
 
   #ifdef caliper_FOUND
@@ -72,10 +72,24 @@ batch_transport(const double next_dt, const bool gpu_available, const GPU_Setup<
     // Precompute emission group data for event-based transport (both CPU and GPU)
     std::vector<EmissionGroupData> emission_groups;
     if (transport_algorithm == Constants::EVENT) {
+
+      #ifdef caliper_FOUND
+        CALI_MARK_BEGIN("Compute Event Groups");
+      #else
+        t_transport.start_timer("Compute Event Groups");
+      #endif
+
       emission_groups.resize(mesh.get_n_local_cells());
       for (size_t i = 0; i < mesh.get_n_local_cells(); ++i) {
         emission_groups[i] = precompute_emission_group_data(mesh.get_cells()[i]);
       }
+
+      #ifdef caliper_FOUND
+        CALI_MARK_END("Compute Event Groups");
+      #else
+        t_transport.stop_timer("Compute Event Groups");
+      #endif
+
     }
     // EVENT: GPU
     if (gpu_setup.use_gpu_transporter() && gpu_available) {
@@ -83,8 +97,20 @@ batch_transport(const double next_dt, const bool gpu_available, const GPU_Setup<
       // Call the correct overloaded gpu_event_transport_photons based on Census_T
       gpu_event_transport_photons(rank_cell_offset, all_photons, gpu_setup.get_device_cells_ptr(),
                                   cell_tallies, emission_groups);
+
+      #ifdef caliper_FOUND
+        CALI_MARK_BEGIN("Post Process");
+      #else
+        t_transport.start_timer("Post Process");
+      #endif 
       auto [batch_complete, batch_exit_E, batch_census_E] =
           post_process_photons(next_dt, all_photons, mesh, phtn_send_buffer);
+
+      #ifdef caliper_FOUND
+        CALI_MARK_END("Post Process");
+      #else
+        t_transport.stop_timer("Post Process");
+      #endif
 
       n_complete += batch_complete;
       exit_E += batch_exit_E;
@@ -120,8 +146,20 @@ batch_transport(const double next_dt, const bool gpu_available, const GPU_Setup<
           auto batch_photons = all_photons.get_sub_batch(batch_start, batch_end);
           cpu_event_transport_photons(rank_cell_offset, batch_photons, mesh.get_cells(),
                                       cell_tallies, n_omp_threads, emission_groups);
+          #ifdef caliper_FOUND
+            CALI_MARK_BEGIN("Post Process");
+          #else
+            t_transport.start_timer("Post Process");
+          #endif
+
           auto [batch_complete, batch_exit_E, batch_census_E] =
               post_process_photons(next_dt, batch_photons, mesh, phtn_send_buffer);
+
+          #ifdef caliper_FOUND
+            CALI_MARK_END("Post Process");
+          #else
+            t_transport.stop_timer("Post Process");
+          #endif
 
           // copy batch back into all_photons
           all_photons.update_from_sub_batch(batch_photons, batch_start);

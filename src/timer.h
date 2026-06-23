@@ -28,16 +28,16 @@ public:
     if (times.find(name) == times.end())
       times[name] = 0.0;
     start_times[name] = std::chrono::high_resolution_clock::now();
-#ifdef caliper_FOUND
-    CALI_MARK_BEGIN(name.c_str());
-#endif
+// #ifdef caliper_FOUND
+//     CALI_MARK_BEGIN(name.c_str());
+// #endif
   }
 
   //! Stop timer with name (must be the last active timer)
   void stop_timer(std::string name) {
-#ifdef caliper_FOUND
-    CALI_MARK_END(name.c_str());
-#endif
+// #ifdef caliper_FOUND
+//     CALI_MARK_END(name.c_str());
+// #endif
     double time_seconds =
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::high_resolution_clock::now() - start_times[name])
