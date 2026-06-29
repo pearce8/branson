@@ -46,6 +46,7 @@ void imc_replicated_driver(Mesh &mesh, IMC_State &imc_state,
   const int n_ranks = mpi_info.get_n_rank();
 
   const uint32_t seed = imc_parameters.get_rng_seed();
+  Source_Scratch source_scratch(mesh.get_n_local_cells());
   while (!imc_state.finished()) {
     if (rank == 0)
       imc_state.print_timestep_header();
@@ -68,7 +69,8 @@ void imc_replicated_driver(Mesh &mesh, IMC_State &imc_state,
     Timer t_source;
     t_source.start_timer("source");
 
-    make_photons<Census_T>(imc_state.get_dt(), mesh, rank, imc_state.get_step(),  seed, n_user_photons, global_source_energy, gpu_setup);
+    make_photons<Census_T>(imc_state.get_dt(), mesh, rank, imc_state.get_step(), seed,
+                           n_user_photons, global_source_energy, source_scratch, gpu_setup);
     auto &all_photons = gpu_setup.get_census_photons();
     imc_state.set_pre_census_E(get_photon_list_census_E(all_photons));
 

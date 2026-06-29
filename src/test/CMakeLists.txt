@@ -47,7 +47,8 @@ function( add_branson_test )
   # Build the test
   add_executable( ${build_target} ${abt_SOURCE} )
   target_include_directories( ${build_target} PRIVATE
-    $<BUILD_INTERFACE:${BRANSON_BINARY_DIR}> )
+    $<BUILD_INTERFACE:${BRANSON_BINARY_DIR}>
+    ${branson_mpi_include_dirs} )
   target_link_libraries( ${build_target} PUBLIC ${branson_deps} )
 
   # Register the test command with ctest.
@@ -74,7 +75,8 @@ function( add_branson_gpu_test )
   # Build the test
   add_executable( ${build_target} ${abt_SOURCE} )
   target_include_directories( ${build_target} PRIVATE
-    $<BUILD_INTERFACE:${BRANSON_BINARY_DIR}> )
+    $<BUILD_INTERFACE:${BRANSON_BINARY_DIR}>
+    ${branson_mpi_include_dirs} )
   target_link_libraries( ${build_target} PUBLIC ${branson_deps} )
 
   if("${GPU_DBS_STRING}" STREQUAL "CUDA" )

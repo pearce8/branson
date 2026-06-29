@@ -23,6 +23,8 @@ int main(int argc, char *argv[]) {
   MPI_Init(&argc, &argv);
 
   using Constants::REPLICATED;
+  using Constants::SOA;
+  using Constants::EVENT;
   using Constants::REFLECT;
   using Constants::VACUUM;
   using Constants::X_NEG;
@@ -147,6 +149,82 @@ int main(int argc, char *argv[]) {
         cout << "TEST PASSED: simple input get functions" << endl;
       else {
         cout << "TEST FAILED: simple input get functions" << endl;
+        nfail++;
+      }
+    }
+
+    // test command-line style overrides applied to the common input block while
+    // leaving unspecified values on their XML defaults.
+    {
+      string filename("simple_input.xml");
+      CommonInputOverrides common_overrides;
+      common_overrides["t_start"] = "0.25";
+      common_overrides["t_stop"] = "0.5";
+      common_overrides["dt_start"] = "0.125";
+      common_overrides["t_mult"] = "1.5";
+      common_overrides["dt_max"] = "2.0";
+      common_overrides["photons"] = "123456";
+      common_overrides["seed"] = "8675309";
+      common_overrides["output_frequency"] = "9";
+      common_overrides["dd_transport_type"] = "REPLICATED";
+      common_overrides["particle_storage"] = "SOA";
+      common_overrides["particle_algorithm"] = "EVENT";
+      common_overrides["n_omp_threads"] = "8";
+      common_overrides["dd_batch_size"] = "2468";
+      common_overrides["event_batch_size"] = "1357";
+      common_overrides["particle_message_size"] = "4321";
+      common_overrides["use_gpu_transporter"] = "TRUE";
+      common_overrides["use_combing"] = "TRUE";
+      common_overrides["write_silo"] = "TRUE";
+
+      Input input(filename, mpi_types, common_overrides);
+
+      bool common_override_pass = true;
+      if (input.get_dt() != 0.125)
+        common_override_pass = false;
+      if (input.get_time_start() != 0.25)
+        common_override_pass = false;
+      if (input.get_time_finish() != 0.5)
+        common_override_pass = false;
+      if (input.get_time_mult() != 1.5)
+        common_override_pass = false;
+      if (input.get_dt_max() != 2.0)
+        common_override_pass = false;
+      if (input.get_rng_seed() != 8675309)
+        common_override_pass = false;
+      if (input.get_number_photons() != 123456)
+        common_override_pass = false;
+      if (input.get_output_freq() != 9)
+        common_override_pass = false;
+      if (input.get_dd_mode() != REPLICATED)
+        common_override_pass = false;
+      if (input.get_particle_storage() != SOA)
+        common_override_pass = false;
+      if (input.get_particle_algorithm() != EVENT)
+        common_override_pass = false;
+      if (input.get_n_omp_threads() != 8)
+        common_override_pass = false;
+      if (input.get_dd_batch_size() != 2468)
+        common_override_pass = false;
+      if (input.get_event_batch_size() != 1357)
+        common_override_pass = false;
+      if (input.get_particle_message_size() != 4321)
+        common_override_pass = false;
+      if (input.get_use_gpu_transporter_bool() != true)
+        common_override_pass = false;
+      if (input.get_comb_bool() != true)
+        common_override_pass = false;
+      if (input.get_write_silo_bool() != true)
+        common_override_pass = false;
+      if (input.get_global_n_x_cells() != 10)
+        common_override_pass = false;
+      if (input.get_bc(X_NEG) != REFLECT)
+        common_override_pass = false;
+
+      if (common_override_pass)
+        cout << "TEST PASSED: common section overrides" << endl;
+      else {
+        cout << "TEST FAILED: common section overrides" << endl;
         nfail++;
       }
     }

@@ -27,6 +27,8 @@
 #include "mpi_types.h"
 #include "region.h"
 
+using CommonInputOverrides = std::map<std::string, std::string>;
+
 //==============================================================================
 /*!
  * \class Input
@@ -40,7 +42,8 @@
 class Input {
 public:
   //! Constructor
-  Input(std::string fileName, const MPI_Types &mpi_types) {
+  Input(std::string fileName, const MPI_Types &mpi_types,
+        const CommonInputOverrides &common_overrides = CommonInputOverrides()) {
     using Constants::ELEMENT;
     using Constants::REFLECT;
     using Constants::VACUUM;
@@ -125,6 +128,15 @@ public:
         exit(EXIT_FAILURE);
       }
 
+      // Command-line values override the XML common block before parsing.
+      for (CommonInputOverrides::const_iterator it = common_overrides.begin();
+           it != common_overrides.end(); ++it) {
+        pugi::xml_node child = settings_node.child(it->first.c_str());
+        if (!child)
+          child = settings_node.append_child(it->first.c_str());
+        child.text().set(it->second.c_str());
+      }
+
       tFinish = settings_node.child("t_stop").text().as_double();
       dt = settings_node.child("dt_start").text().as_double();
       tStart = settings_node.child("t_start").text().as_double();
@@ -156,6 +168,7 @@ public:
 
 #ifdef USE_GPU
 #ifdef USE_UMPIRE
+      umpire_host_pool_size = settings_node.child("umpire_host_pool_size").text().as_int();
       umpire_device_pool_size = settings_node.child("umpire_device_pool_size").text().as_int();
 #endif
 #endif
@@ -533,6 +546,7 @@ public:
       MPI_Bcast(regions.data(), n_regions, MPI_Region, 0, MPI_COMM_WORLD);
       #ifdef USE_GPU
       #ifdef USE_UMPIRE
+      MPI_Bcast(&umpire_host_pool_size, 1, MPI_UNSIGNED, 0, MPI_COMM_WORLD);
       MPI_Bcast(&umpire_device_pool_size, 1, MPI_UNSIGNED, 0, MPI_COMM_WORLD);
       #endif
       #endif
@@ -613,6 +627,7 @@ public:
       MPI_Bcast(&regions[0], n_regions, MPI_Region, 0, MPI_COMM_WORLD);
       #ifdef USE_GPU
       #ifdef USE_UMPIRE
+      MPI_Bcast(&umpire_host_pool_size, 1, MPI_UNSIGNED, 0, MPI_COMM_WORLD);
       MPI_Bcast(&umpire_device_pool_size, 1, MPI_UNSIGNED, 0, MPI_COMM_WORLD);
       #endif
       #endif
@@ -856,6 +871,7 @@ public:
 #ifdef USE_GPU
 #ifdef USE_UMPIRE
   //! Return the device memory pool size in GB
+  uint32_t get_umpire_host_pool_size() const { return umpire_host_pool_size; }
   uint32_t get_umpire_device_pool_size() const { return umpire_device_pool_size; }
 #endif
 #endif
@@ -949,6 +965,7 @@ private:
 
 #ifdef USE_GPU
 #ifdef USE_UMPIRE
+  uint32_t umpire_host_pool_size = 4; //!< Size (in GB) of the device memory pool
   uint32_t umpire_device_pool_size = 4; //!< Size (in GB) of the device memory pool
 #endif
 #endif

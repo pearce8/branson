@@ -122,6 +122,29 @@ cudaError_t umpireMalloc(T** devPtr, size_t size);
 
 #endif
 
+#ifdef USE_UMPIRE
+void umpireHostMalloc(void** ptr, size_t size);
+void umpireHostFree(void* ptr);
+template <typename T>
+void umpireHostMalloc(T** ptr, size_t size);
+#define hostFree umpireHostFree
+#define hostMalloc umpireHostMalloc
+#else
+void hostMalloc(void** ptr, size_t size) {
+  *ptr = std::malloc(size);
+}
+
+template <typename T>
+void hostMalloc(T** ptr, size_t size) {
+  void* raw_ptr = std::malloc(size);
+  *ptr = static_cast<T*>(raw_ptr);
+}
+
+void hostFree(void* ptr) {
+  std::free(ptr);
+}
+#endif
+
 inline void Insist(const bool pass, const std::string &message) {
   if (!pass) {
     std::cout<<"Insist at "<< __FILE__ <<" "<<__LINE__<<" fails with: "<<message<<std::endl;
@@ -140,6 +163,36 @@ inline void Insist(const bool pass, const std::string &message) {
 #ifdef USE_UMPIRE
 #include <umpire/Umpire.hpp>
 #include <umpire/strategy/QuickPool.hpp>
+
+void makeUmpireHostPool(int host_pool_size) {
+  auto &rm = umpire::ResourceManager::getInstance();
+  const char * allocator_name = "BRANSON_HOST_POOL";
+  size_t umpire_host_pool_size = ((size_t) host_pool_size) * 1024 * 1024 * 1024;
+  size_t umpire_host_block_size = 512;
+  auto host_pool_allocator = rm.makeAllocator<umpire::strategy::QuickPool>(allocator_name, rm.getAllocator("HOST"), umpire_host_pool_size, umpire_host_block_size);
+  // force allocation of GPU memory pool
+  void* tmp = host_pool_allocator.allocate(100);
+  host_pool_allocator.deallocate(tmp);
+}
+
+void umpireHostMalloc(void** ptr, size_t size) {
+  auto &rm = umpire::ResourceManager::getInstance();
+  auto allocator = rm.getAllocator("BRANSON_HOST_POOL");
+  *ptr = allocator.allocate(size);
+}
+
+template <typename T>
+void umpireHostMalloc(T** ptr, size_t size) {
+  void* raw_ptr = nullptr;
+  umpireHostMalloc(&raw_ptr, size);
+  *ptr = static_cast<T*>(raw_ptr);
+}
+
+void umpireHostFree(void* ptr) {
+  auto &rm = umpire::ResourceManager::getInstance();
+  auto allocator = rm.getAllocator("BRANSON_HOST_POOL");
+  allocator.deallocate(ptr);
+}
 
 void makeUmpireDevicePool(int device_pool_size) {
   auto &rm = umpire::ResourceManager::getInstance();

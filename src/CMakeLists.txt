@@ -55,6 +55,15 @@ get_property(_LANGUAGES_ GLOBAL PROPERTY ENABLED_LANGUAGES)
 
 find_package(MPI REQUIRED C CXX)
 
+set(branson_mpi_include_dirs
+  ${MPI_C_INCLUDE_DIRS}
+  ${MPI_CXX_INCLUDE_DIRS}
+  ${MPI_C_ADDITIONAL_INCLUDE_DIRS}
+  ${MPI_CXX_ADDITIONAL_INCLUDE_DIRS}
+  ${MPI_C_COMPILER_INCLUDE_DIRS}
+  ${MPI_CXX_COMPILER_INCLUDE_DIRS})
+list(REMOVE_DUPLICATES branson_mpi_include_dirs)
+
 list(APPEND branson_deps
   MPI::MPI_C
   MPI::MPI_CXX)
@@ -240,7 +249,10 @@ endif()
 file(GLOB headers *.h)
 add_executable(BRANSON main.cc ${headers})
 target_include_directories( BRANSON PRIVATE
-  $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}> ${PROJECT_SOURCE_DIR}/pugixml/src/ ${PROJECT_SOURCE_DIR}/random123/ )
+  $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>
+  ${PROJECT_SOURCE_DIR}/pugixml/src/
+  ${PROJECT_SOURCE_DIR}/random123/
+  ${branson_mpi_include_dirs} )
 
 if("${GPU_DBS_STRING}" STREQUAL "CUDA" )
   if(USE_CUDA)

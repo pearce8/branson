@@ -26,7 +26,7 @@ public:
   ~Buffer() {}
 
   //! Fill the underlying buffer data with input vector
-  void fill(std::vector<T> _object) {
+  void fill(const std::vector<T> &_object) {
     object = _object;
     status = READY;
   }
